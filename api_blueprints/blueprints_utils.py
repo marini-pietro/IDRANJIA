@@ -113,13 +113,18 @@ def create_response(message: Dict, status_code: int) -> Response:
 
     return make_response(jsonify(message), status_code)
 
-def get_blueprint_http_verbs(class_) -> list[str]:
+def get_class_http_verbs(class_: type) -> List[str]:
     """
-    Get the HTTP verbs defined in a Flask blueprint class.
+    Args:
+        class (type): The class to inspect. Must be a class object, not an instance.
+    Returns:
+        list[str]: A list of HTTP verbs (in uppercase) implemented as methods in the class.
+    Raises:
+        TypeError: If the provided argument is not a class.
     """
     # Ensure the input is a class
     if not inspect.isclass(class_):
-        raise TypeError("Expected a class, but an instance was passed.")
+        raise TypeError(f"class_ must be a class, not an instance. Got {class_} instead.")
     
     # List of HTTP verbs to filter
     http_verbs = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace', 'connect']
