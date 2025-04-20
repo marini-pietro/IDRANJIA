@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Creato il: Apr 18, 2025 alle 15:52
+-- Creato il: Apr 20, 2025 alle 21:42
 -- Versione del server: 10.4.32-MariaDB
 -- Versione PHP: 8.2.12
 
@@ -38,10 +38,10 @@ CREATE TABLE `controlli` (
 -- --------------------------------------------------------
 
 --
--- Struttura della tabella `controllooperatore`
+-- Struttura della tabella `controllo_operatore`
 --
 
-CREATE TABLE `controllooperatore` (
+CREATE TABLE `controllo_operatore` (
   `idC` int(11) NOT NULL,
   `CF` char(16) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -115,9 +115,9 @@ ALTER TABLE `controlli`
   ADD KEY `idI` (`idI`);
 
 --
--- Indici per le tabelle `controllooperatore`
+-- Indici per le tabelle `controllo_operatore`
 --
-ALTER TABLE `controllooperatore`
+ALTER TABLE `controllo_operatore`
   ADD PRIMARY KEY (`idC`,`CF`),
   ADD KEY `CF` (`CF`);
 
@@ -174,11 +174,11 @@ ALTER TABLE `controlli`
   ADD CONSTRAINT `controlli_ibfk_1` FOREIGN KEY (`idI`) REFERENCES `idranti` (`id`);
 
 --
--- Limiti per la tabella `controllooperatore`
+-- Limiti per la tabella `controllo_operatore`
 --
-ALTER TABLE `controllooperatore`
-  ADD CONSTRAINT `controllooperatore_ibfk_1` FOREIGN KEY (`idC`) REFERENCES `controlli` (`idC`),
-  ADD CONSTRAINT `controllooperatore_ibfk_2` FOREIGN KEY (`CF`) REFERENCES `operatori` (`CF`);
+ALTER TABLE `controllo_operatore`
+  ADD CONSTRAINT `controllo_operatore_ibfk_1` FOREIGN KEY (`idC`) REFERENCES `controlli` (`idC`),
+  ADD CONSTRAINT `controllo_operatore_ibfk_2` FOREIGN KEY (`CF`) REFERENCES `operatori` (`CF`);
 
 --
 -- Limiti per la tabella `foto`
