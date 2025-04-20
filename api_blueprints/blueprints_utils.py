@@ -1,5 +1,6 @@
 import threading
 import re
+import inspect
 from flask import jsonify, make_response, request, Response, Request
 from flask_jwt_extended import get_jwt_identity
 from contextlib import contextmanager
@@ -111,6 +112,20 @@ def create_response(message: Dict, status_code: int) -> Response:
     #message = f"{message}\n{STATUS_CODES_EXPLANATIONS.get(status_code, 'Unknown status code')}"
 
     return make_response(jsonify(message), status_code)
+
+def get_blueprint_http_verbs(class_) -> list[str]:
+    """
+    Get the HTTP verbs defined in a Flask blueprint class.
+    """
+    # Ensure the input is a class
+    if not inspect.isclass(class_):
+        raise TypeError("Expected a class, but an instance was passed.")
+    
+    # List of HTTP verbs to filter
+    http_verbs = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace', 'connect']
+    
+    # Get all methods of the class and filter by HTTP verbs
+    return [name.upper() for name, member in inspect.getmembers(class_, predicate=inspect.isfunction) if name.lower() in http_verbs]
 
 # Data handling related
 def parse_time_string(time_string: str) -> datetime:
