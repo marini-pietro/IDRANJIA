@@ -115,7 +115,7 @@ class Photo(Resource):
         
         # Return the response
         return create_response(message={'outcome': 'photo successfully created',
-                                        "location": f"{Photo.ENDPOINT_PATHS[0]}/{lastrowid}"}, status_code=STATUS_CODES["created"])
+                                        "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Photo.ENDPOINT_PATHS[0]}/{lastrowid}"}, status_code=STATUS_CODES["created"])
 
     @jwt_required_endpoint
     def patch(self, id) -> Response:

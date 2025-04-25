@@ -98,7 +98,7 @@ class Operator(Resource):
         
         # Return the new operator as a JSON response
         return create_response(message={"outcome": "operator successfully created",
-                                        "location": f"{Operator.ENDPOINT_PATHS[0]}/{lastrowid}"}, status_code=STATUS_CODES["created"])
+                                        "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Operator.ENDPOINT_PATHS[0]}/{lastrowid}"}, status_code=STATUS_CODES["created"])
 
     @jwt_required_endpoint
     def patch(self) -> Response:
