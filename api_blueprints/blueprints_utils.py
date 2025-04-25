@@ -1,15 +1,14 @@
 import re
 import inspect
 import socket
+import queue
 import threading
-import traceback
-from os import getpid
 from datetime import datetime, timezone
+from os import getpid
 from flask import jsonify, make_response, request, Response, Request
 from flask_jwt_extended import get_jwt_identity
 from contextlib import contextmanager
 from mysql.connector import pooling as mysql_pooling
-from datetime import datetime
 from functools import wraps
 from requests import post as requests_post
 from cachetools import TTLCache
@@ -303,12 +302,22 @@ def execute_query(query: str, params: Tuple[Any]) -> int:
             return cursor.lastrowid
 
 # Log server related
-# Create an asynchronous session for log server interactions
-def log(type: str, message: str, origin_name: str, origin_host: str, structured_data: str = "- -") -> None:
+# Create a queue for log messages
+log_queue = queue.Queue()
+
+def log_worker():
     """
-    Send a log message to the syslog server asynchronously using threading.
+    Background thread function to process log messages from the queue.
     """
-    def send_log():
+    while True:
+        # Get a log message from the queue
+        log_data = log_queue.get()
+        if log_data is None:  # Exit signal
+            break
+
+        # Extract log details
+        type, message, origin_name, origin_host, structured_data = log_data
+
         # Format the log message in RFC 5424 format
         syslog_message = (
             f"<14>1 "
@@ -320,21 +329,33 @@ def log(type: str, message: str, origin_name: str, origin_host: str, structured_
             f"{type.upper()}: {message}"  # Log type and message
         )
 
-        print(f"{syslog_message}, len: {len(syslog_message)}")  # Debugging
-
         try:
             # Create a UDP socket and send the log message
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                print(f"Sending syslog message: {syslog_message}")  # Debugging
                 sock.sendto(syslog_message.encode('utf-8'), (LOG_SERVER_HOST, LOG_SERVER_PORT))
         except Exception as ex:
             print(f"Failed to send log: {ex}")
-            traceback.print_exc()
 
-    # Run the log sending in a separate thread
-    thread = threading.Thread(target=send_log, daemon=True)
-    thread.start()
-    thread.join()  # Wait for the thread to complete # Daemon thread will not block the program from exiting so it does not need to be waited (join command)
+        # Mark the task as done
+        log_queue.task_done()
+
+# Start the background thread
+log_thread = threading.Thread(target=log_worker, daemon=True)
+log_thread.start()
+
+def log(type: str, message: str, origin_name: str, origin_host: str, structured_data: str = "- -") -> None:
+    """
+    Add a log message to the queue for the background thread to process.
+    """
+    log_queue.put((type, message, origin_name, origin_host, structured_data))
+
+# Graceful shutdown function to stop the log thread
+def shutdown_logging():
+    """
+    Signal the log thread to exit and wait for it to finish.
+    """
+    log_queue.put(None)  # Send exit signal
+    log_thread.join()  # Wait for the thread to finish (even if it is a daemon thread so no logs are lost)
 
 # Token validation related
 # | Create a cache for token validation results with a time-to-live (TTL) of 300 seconds (5 minutes)
