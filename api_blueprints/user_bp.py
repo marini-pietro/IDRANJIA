@@ -20,6 +20,9 @@ user_bp = Blueprint(BP_NAME, __name__)
 api = Api(user_bp)
 
 class User(Resource):
+
+    ENDPOINT_PATHS = [f'/{BP_NAME}', f'/{BP_NAME}/<int:id>']
+
     @jwt_required_endpoint
     def get(self) -> Response:
         ...
@@ -46,10 +49,12 @@ class User(Resource):
         allowed_methods = get_class_http_verbs(type(self))
         
         # Create the response
-        response = Response()
+        response = Response(status=STATUS_CODES["ok"])
         response.headers['Allow'] = ', '.join(allowed_methods)
         response.headers['Access-Control-Allow-Origin'] = '*'  # Adjust as needed for CORS
         response.headers['Access-Control-Allow-Methods'] = ', '.join(allowed_methods)
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         
         return response
+    
+api.add_resource(User, *User.ENDPOINT_PATHS)
