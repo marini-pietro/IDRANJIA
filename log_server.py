@@ -1,3 +1,11 @@
+"""
+Syslog server implementation that listens for syslog messages over UDP.
+It processes messages according to RFC 5424, implements rate limiting,
+and logs messages to both console and file.
+It also handles delayed logs when the rate limit is exceeded.
+"""
+
+# Import necessary libraries
 import socket
 import re
 import logging
@@ -13,14 +21,18 @@ from config import (
     LOG_SERVER_PORT,
     LOG_FILE_NAME,
     LOGGER_NAME,
-    RATE_LIMIT,
-    TIME_WINDOW,
+    RATE_LIMIT_AMOUNT,
+    RATE_LIMIT_AMOUNT_TIME_WINDOW,
     DELAYED_LOGS_QUEUE_SIZE,
 )
 
 
 # Define the logger class
 class Logger:
+    """
+    Logger class to handle logging messages to both console and file.
+    """
+
     def __init__(self, log_file, console_level, file_level):
         # Create a logger object
         self.logger: Logger = logging.getLogger(name=LOGGER_NAME)
@@ -45,8 +57,10 @@ class Logger:
         self.logger.addHandler(console_handler)
         self.logger.addHandler(file_handler)
 
-    # Function to log messages with different levels (automatically retrieves the right function based on the log type parameter)
-    # The log_type parameter should be one of the logging levels: debug, info, warning, error, critical
+    # Function to log messages with different levels
+    # (automatically retrieves the right function based on the log type parameter)
+    # The log_type parameter should be one of the logging levels:
+    # debug, info, warning, error, critical
     def log(self, log_type, message, origin):
         """
         Log a message with the specified type, message and origin
@@ -57,6 +71,9 @@ class Logger:
 
     # Function to close all handlers
     def close(self):
+        """
+        Close all handlers of the logger.
+        """
         for handler in self.logger.handlers[:]:
             handler.close()
             self.logger.removeHandler(handler)
@@ -134,14 +151,17 @@ def process_syslog_message(message, addr):
     current_time = time.time()
 
     # Check and reset the count if the time window has passed
-    if current_time - message_counts[source_ip]["timestamp"] > TIME_WINDOW:
+    if (
+        current_time - message_counts[source_ip]["timestamp"]
+        > RATE_LIMIT_AMOUNT_TIME_WINDOW
+    ):
         message_counts[source_ip] = {"count": 0, "timestamp": current_time}
 
     # Increment the message count for the source
     message_counts[source_ip]["count"] += 1
 
     # Enforce rate limit
-    if message_counts[source_ip]["count"] > RATE_LIMIT:
+    if message_counts[source_ip]["count"] > RATE_LIMIT_AMOUNT:
         # Add the log to the delayed queue instead of dropping it
         with queue_lock:
             delayed_logs.append((message, addr))
@@ -190,7 +210,10 @@ def _process_message(message, addr):
         # Log the message with detailed information
         logger.log(
             log_type=log_level,
-            message=f"{timestamp} {hostname} {app_name} {proc_id} {msg_id} {structured_data} {msg_content}",
+            message=(
+                f"{timestamp} {hostname} {app_name} {proc_id} "
+                f"{msg_id} {structured_data} {msg_content}"
+            ),
             origin=f"sourceIP-{addr[0]}",
         )
     else:
