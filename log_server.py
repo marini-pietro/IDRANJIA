@@ -8,10 +8,16 @@ from threading import Thread, Lock
 from os.path import abspath as os_path_abspath
 from os.path import dirname as os_path_dirname
 from os.path import join as os_path_join
-from config import (LOG_SERVER_HOST, LOG_SERVER_PORT, 
-                    LOG_FILE_NAME, LOGGER_NAME,
-                    RATE_LIMIT, TIME_WINDOW,
-                    DELAYED_LOGS_QUEUE_SIZE)
+from config import (
+    LOG_SERVER_HOST,
+    LOG_SERVER_PORT,
+    LOG_FILE_NAME,
+    LOGGER_NAME,
+    RATE_LIMIT,
+    TIME_WINDOW,
+    DELAYED_LOGS_QUEUE_SIZE,
+)
+
 
 # Define the logger class
 class Logger:
@@ -29,7 +35,9 @@ class Logger:
         file_handler.setLevel(file_level)
 
         # Create formatter objects and set the format of the log messages
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         console_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
 
@@ -53,14 +61,20 @@ class Logger:
             handler.close()
             self.logger.removeHandler(handler)
 
+
 # Generate the log file path so that it is in the same directory as this script
-log_file_path: str = os_path_join(os_path_dirname(os_path_abspath(__file__)), LOG_FILE_NAME)
+log_file_path: str = os_path_join(
+    os_path_dirname(os_path_abspath(__file__)), LOG_FILE_NAME
+)
 
 # Initialize the logger
-logger = Logger(log_file=log_file_path, console_level=logging.INFO, file_level=logging.DEBUG)
+logger = Logger(
+    log_file=log_file_path, console_level=logging.INFO, file_level=logging.DEBUG
+)
 
 # Add a shutdown flag
 shutdown_flag = threading.Event()
+
 
 def start_syslog_server(host, port):
     """
@@ -72,10 +86,12 @@ def start_syslog_server(host, port):
 
     try:
         while not shutdown_flag.is_set():  # Check the shutdown flag
-            syslog_socket.settimeout(1.0)  # Set a timeout to periodically check the flag
+            syslog_socket.settimeout(
+                1.0
+            )  # Set a timeout to periodically check the flag
             try:
                 data, addr = syslog_socket.recvfrom(1024)
-                message = data.decode('utf-8')
+                message = data.decode("utf-8")
                 process_syslog_message(message, addr)
             except socket.timeout:
                 continue  # Continue the loop if no data is received
@@ -86,25 +102,29 @@ def start_syslog_server(host, port):
         syslog_socket.close()
         logger.close()
 
+
 # Compile the RFC 5424 syslog message regex pattern once
 SYSLOG_PATTERN = re.compile(
-    r"<(\d+)>"                  # PRI
-    r"(\d{1,2}) "               # VERSION
-    r"(\S+) "                   # TIMESTAMP
-    r"(\S+) "                   # HOSTNAME
-    r"(\S+) "                   # APP-NAME
-    r"(\S+) "                   # PROCID
-    r"(\S+) "                   # MSGID
-    r"(\[.*?\]|-) "             # STRUCTURED-DATA
-    r"(.*)"                     # MSG
+    r"<(\d+)>"  # PRI
+    r"(\d{1,2}) "  # VERSION
+    r"(\S+) "  # TIMESTAMP
+    r"(\S+) "  # HOSTNAME
+    r"(\S+) "  # APP-NAME
+    r"(\S+) "  # PROCID
+    r"(\S+) "  # MSGID
+    r"(\[.*?\]|-) "  # STRUCTURED-DATA
+    r"(.*)"  # MSG
 )
 
 # Dictionary to track message counts and timestamps per source
 message_counts = defaultdict(lambda: {"count": 0, "timestamp": time.time()})
 
 # Queue to store delayed logs
-delayed_logs = deque(maxlen=DELAYED_LOGS_QUEUE_SIZE)  # Limit the size of the queue to avoid memory issues
+delayed_logs = deque(
+    maxlen=DELAYED_LOGS_QUEUE_SIZE
+)  # Limit the size of the queue to avoid memory issues
 queue_lock = Lock()  # Lock to ensure thread-safe access to the queue
+
 
 def process_syslog_message(message, addr):
     """
@@ -128,12 +148,13 @@ def process_syslog_message(message, addr):
         logger.log(
             "warning",
             f"Rate limit exceeded for {source_ip}. Delaying message: {message}",
-            f"Syslog-{source_ip}"
+            f"Syslog-{source_ip}",
         )
         return  # Do not process the message immediately
 
     # Process the syslog message as usual
     _process_message(message, addr)
+
 
 def _process_message(message, addr):
     """
@@ -162,17 +183,20 @@ def _process_message(message, addr):
             5: "notice",
             6: "info",
             7: "debug",
-        }.get(priority % 8, "info")  # Default to "info" if unknown
+        }.get(
+            priority % 8, "info"
+        )  # Default to "info" if unknown
 
         # Log the message with detailed information
         logger.log(
             log_type=log_level,
             message=f"{timestamp} {hostname} {app_name} {proc_id} {msg_id} {structured_data} {msg_content}",
-            origin=f"sourceIP-{addr[0]}"
+            origin=f"sourceIP-{addr[0]}",
         )
     else:
         # Log a warning for invalid syslog messages
         logger.log("warning", f"Invalid syslog message: {message}", f"Syslog-{addr[0]}")
+
 
 def process_delayed_logs():
     """
@@ -184,6 +208,7 @@ def process_delayed_logs():
                 message, addr = delayed_logs.popleft()
                 _process_message(message, addr)
         time.sleep(0.1)  # Adjust the sleep interval as needed
+
 
 # Start a background thread to process delayed logs
 Thread(target=process_delayed_logs, daemon=True).start()
