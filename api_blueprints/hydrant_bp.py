@@ -1,14 +1,13 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
 from blueprints_utils import (
     check_authorization,
     fetchone_query,
     execute_query,
     log,
-    jwt_required_endpoint,
     create_response,
     has_valid_json,
     is_input_safe,
@@ -31,25 +30,25 @@ api = Api(hydrant_bp)
 
 class Hydrant(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
-    @jwt_required_endpoint
-    def get(self, id) -> Response:
+    @jwt_required()
+    def get(self, id_) -> Response:
         """
         Read hydrant data from the database.
         """
 
-        # Validate the id
-        if not isinstance(id, int) or id <= 0:
+        # Validate the id_
+        if not isinstance(id_, int) or id_ <= 0:
             return create_response(
-                message={"error": "id must be positive integer"},
+                message={"error": "id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Get the data
         hydrant = fetchone_query(
-            "SELECT stato, latitudine, longitudine, comune, via, areaGeo, tipo, accessibilità, emailIns FROM idranti WHERE id = %s",
-            (id,),
+            "SELECT stato, latitudine, longitudine, comune, via, areaGeo, tipo, accessibilità, emailIns FROM idranti WHERE id_ = %s",
+            (id_,),
         )
 
         # Check if the result is empty
@@ -62,7 +61,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched hydrant with id {id}',
+            message=f'User {get_jwt_identity().get("email")} fetched hydrant with id_ {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -72,7 +71,7 @@ class Hydrant(Resource):
         # Return the hydrant as a JSON response
         return create_response(message=hydrant, status_code=STATUS_CODES["ok"])
 
-    @jwt_required_endpoint
+    @jwt_required()
     def post(self) -> Response:
         """
         Create a new hydrant row in the database.
@@ -195,7 +194,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created hydrant with id {lastrowid}',
+            message=f'User {get_jwt_identity().get("email")} created hydrant with id_ {lastrowid}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -211,40 +210,40 @@ class Hydrant(Resource):
             status_code=STATUS_CODES["created"],
         )
 
-    @jwt_required_endpoint
+    @jwt_required()
     def patch(self) -> Response: ...
 
-    @jwt_required_endpoint
-    def delete(self, id) -> Response:
+    @jwt_required()
+    def delete(self, id_) -> Response:
         """
         Delete a hydrant row by ID.
         ID is passed as a path variable integer.
         """
 
         # Validate the ID
-        if not isinstance(id, int) or id < 0:
+        if not isinstance(id_, int) or id_ < 0:
             return create_response(
-                message={"error": "id must be positive integer."},
+                message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the ID exists in the database
         hydrant = fetchone_query(
-            "SELECT stato FROM idranti WHERE id = %s", (id,)
-        )  # Column in SELECT is not important, we just need to check if the id exists
+            "SELECT stato FROM idranti WHERE id_ = %s", (id_,)
+        )  # Column in SELECT is not important, we just need to check if the id_ exists
         if hydrant:
             return create_response(
-                message={"error": "id already exist in the database"},
+                message={"error": "id_ already exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Execute the query
-        execute_query("DELETE FROM idranti WHERE id = %s", (id,))
+        execute_query("DELETE FROM idranti WHERE id_ = %s", (id_,))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted hydrant with id {id}',
+            message=f'User {get_jwt_identity().get("email")} deleted hydrant with id_ {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -257,7 +256,7 @@ class Hydrant(Resource):
             status_code=STATUS_CODES["ok"],
         )
 
-    @jwt_required_endpoint
+    @jwt_required()
     def options(self) -> Response:
         # Define allowed methods
         allowed_methods = get_class_http_verbs(type(self))

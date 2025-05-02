@@ -1,16 +1,14 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
 from blueprints_utils import (
     check_authorization,
-    build_select_query_from_filters,
     fetchone_query,
     fetchall_query,
     execute_query,
     log,
-    jwt_required_endpoint,
     create_response,
     build_update_query_from_filters,
     has_valid_json,
@@ -34,24 +32,24 @@ api = Api(user_bp)
 
 class User(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
-    @jwt_required_endpoint
+    @jwt_required()
     def get(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def post(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def patch(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def put(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def delete(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def options(self) -> Response:
         # Define allowed methods
         allowed_methods = get_class_http_verbs(type(self))

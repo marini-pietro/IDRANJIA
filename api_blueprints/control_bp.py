@@ -1,14 +1,13 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
 from blueprints_utils import (
     check_authorization,
     fetchone_query,
     execute_query,
     log,
-    jwt_required_endpoint,
     create_response,
     has_valid_json,
     is_input_safe,
@@ -32,22 +31,22 @@ api = Api(control_bp)
 
 class Control(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
-    @jwt_required_endpoint
-    def get(self, id) -> Response:
+    @jwt_required()
+    def get(self, id_) -> Response:
         """
         Get a control row data by ID.
         ID is passed as a path variable integer.
         """
 
         # Validate the ID
-        if not isinstance(id, int) or id <= 0:
+        if not isinstance(id_, int) or id_ <= 0:
             return create_response(STATUS_CODES["BAD_REQUEST"], "Invalid ID provided.")
 
         # Get the data
         control = fetchone_query(
-            "SELECT tipo, esito, data, idI FROM controlli WHERE id = %s", (id,)
+            "SELECT tipo, esito, data, idI FROM controlli WHERE _ = %s", (id_,)
         )
 
         # Check if the result is empty
@@ -60,7 +59,7 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched control with id {id}',
+            message=f'User {get_jwt_identity().get("email")} fetched control with id {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -70,7 +69,7 @@ class Control(Resource):
         # Return the control as a JSON response
         return create_response(message=control, status_code=STATUS_CODES["ok"])
 
-    @jwt_required_endpoint
+    @jwt_required()
     def post(self) -> Response:
         """
         Create a new row in control table.
@@ -134,7 +133,7 @@ class Control(Resource):
         # Check that the idI exists in the database
         idI_exists = fetchone_query(
             "SELECT stato FROM idranti WHERE id = %s", (idI,)
-        )  # Column in SELECT is not important, we just need to check if the id exists
+        )  # Column in SELECT is not important, we just need to check if the id_ exists
         if not idI_exists:
             return create_response(
                 message={"error": "idI does not exist in the database"},
@@ -150,7 +149,7 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created control with id {lastrowid}',
+            message=f'User {get_jwt_identity().get("email")} created control with id_ {lastrowid}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -166,40 +165,40 @@ class Control(Resource):
             status_code=STATUS_CODES["created"],
         )
 
-    @jwt_required_endpoint
-    def patch(self, id) -> Response: ...
+    @jwt_required()
+    def patch(self, id_) -> Response: ...
 
-    @jwt_required_endpoint
-    def delete(self, id) -> Response:
+    @jwt_required()
+    def delete(self, id_) -> Response:
         """
         Delete a control row by ID.
         ID is passed as a path variable integer.
         """
 
         # Validate the ID
-        if not isinstance(id, int) or id < 0:
+        if not isinstance(id_, int) or id_ < 0:
             return create_response(
-                message={"error": "id must be positive integer."},
+                message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the ID exists in the database
         control = fetchone_query(
-            "SELECT esito FROM controlli WHERE idC = %s", (id,)
-        )  # Column in SELECT is not important, we just need to check if the id exists
+            "SELECT esito FROM controlli WHERE idC = %s", (id_,)
+        )  # Column in SELECT is not important, we just need to check if the id_ exists
         if not control:
             return create_response(
-                message={"error": "id does not exist in the database"},
+                message={"error": "id_ does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Execute the query
-        execute_query("DELETE FROM controlli WHERE idC = %s", (id,))
+        execute_query("DELETE FROM controlli WHERE idC = %s", (id_,))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted control with id {id}',
+            message=f'User {get_jwt_identity().get("email")} deleted control with id_ {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -212,7 +211,7 @@ class Control(Resource):
             status_code=STATUS_CODES["ok"],
         )
 
-    @jwt_required_endpoint
+    @jwt_required()
     def options(self) -> Response:
         # Define allowed methods
         allowed_methods = get_class_http_verbs(type(self))

@@ -1,7 +1,7 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
 from blueprints_utils import (
     check_authorization,
@@ -9,7 +9,6 @@ from blueprints_utils import (
     fetchall_query,
     execute_query,
     log,
-    jwt_required_endpoint,
     create_response,
     has_valid_json,
     is_input_safe,
@@ -33,9 +32,9 @@ api = Api(photo_bp)
 
 class Photo(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
-    @jwt_required_endpoint
+    @jwt_required()
     def get(self, hydrant_id) -> Response:
         """
         Get a photo by ID of the hydrant that it represents.
@@ -44,12 +43,12 @@ class Photo(Resource):
         # Validate the hydrant_id
         if not isinstance(hydrant_id, int) or hydrant_id < 0:
             return create_response(
-                message={"error": "hydrant id must be positive integer"},
+                message={"error": "hydrant id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Check that hydrant exists
-        hydrant = fetchone_query("SELECT id FROM hydrants WHERE id = %s", (hydrant_id,))
+        hydrant = fetchone_query("SELECT id_ FROM hydrants WHERE id_ = %s", (hydrant_id,))
         if not hydrant:
             return create_response(
                 message={"error": "hydrant not found"},
@@ -71,7 +70,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched photos with hydrant id {hydrant_id}',
+            message=f'User {get_jwt_identity().get("email")} fetched photos with hydrant id_ {hydrant_id}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -81,7 +80,7 @@ class Photo(Resource):
         # Return the photos as a JSON response
         return create_response(message=photos, status_code=STATUS_CODES["ok"])
 
-    @jwt_required_endpoint
+    @jwt_required()
     def post(self) -> Response:
         """
         Create a new photo row in the database.
@@ -141,7 +140,7 @@ class Photo(Resource):
         date = parse_date_string(date)
 
         # Check that hydrant exists
-        hydrant = fetchone_query("SELECT id FROM hydrants WHERE id = %s", (hydrant_id,))
+        hydrant = fetchone_query("SELECT id_ FROM hydrants WHERE id_ = %s", (hydrant_id,))
         if not hydrant:
             return create_response(
                 message={"error": "hydrant not found"},
@@ -166,7 +165,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created photo with hydrant id {hydrant_id}',
+            message=f'User {get_jwt_identity().get("email")} created photo with hydrant id_ {hydrant_id}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -182,13 +181,13 @@ class Photo(Resource):
             status_code=STATUS_CODES["created"],
         )
 
-    @jwt_required_endpoint
-    def patch(self, id) -> Response: ...
+    @jwt_required()
+    def patch(self, id_) -> Response: ...
 
-    @jwt_required_endpoint
-    def delete(self, id) -> Response: ...
+    @jwt_required()
+    def delete(self, id_) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def options(self) -> Response:
         # Define allowed methods
         allowed_methods = get_class_http_verbs(type(self))

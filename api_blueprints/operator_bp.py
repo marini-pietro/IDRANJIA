@@ -1,14 +1,13 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
 from blueprints_utils import (
     check_authorization,
     fetchone_query,
     execute_query,
     log,
-    jwt_required_endpoint,
     create_response,
     has_valid_json,
     is_input_safe,
@@ -31,16 +30,16 @@ api = Api(operator_bp)
 
 class Operator(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>", f"/{BP_NAME}/<string:CF>"]
 
-    @jwt_required_endpoint
-    def get(self, id) -> Response:
+    @jwt_required()
+    def get(self, id_) -> Response:
         """
         Get the information of an operator from the database.
         """
 
-        # Validate the id
-        if not isinstance(id, int) or id < 0:
+        # Validate the id_
+        if not isinstance(id_, int) or id_ < 0:
             return create_response(
                 message={"error": "id must be a positive integer"},
                 status_code=STATUS_CODES["bad_request"],
@@ -48,7 +47,7 @@ class Operator(Resource):
 
         # Get the data
         operator = fetchone_query(
-            "SELECT CF, nome, cognome FROM operatori WHERE id = %s", (id,)
+            "SELECT CF, nome, cognome FROM operatori WHERE id = %s", (id_,)
         )
 
         # Check if the result is empty
@@ -61,17 +60,17 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched operator with id {id}',
+            message=f'User {get_jwt_identity().get("email")} fetched operator with id {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Operator.ENDPOINT_PATHS[0]} Verb GET]",
+            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='GET']",
         )
 
         # Return the operator as a JSON response
         return create_response(message=operator, status_code=STATUS_CODES["ok"])
 
-    @jwt_required_endpoint
+    @jwt_required()
     def post(self) -> Response:
         """
         Create a new operator row in the database.
@@ -153,10 +152,10 @@ class Operator(Resource):
             status_code=STATUS_CODES["created"],
         )
 
-    @jwt_required_endpoint
+    @jwt_required()
     def patch(self) -> Response: ...
 
-    @jwt_required_endpoint
+    @jwt_required()
     def delete(self, CF) -> Response:
         """
         Delete an operator from the database.
@@ -185,7 +184,7 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted opearator with cf {id}',
+            message=f'User {get_jwt_identity().get("email")} deleted opearator with cf {CF}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -198,7 +197,7 @@ class Operator(Resource):
             status_code=STATUS_CODES["ok"],
         )
 
-    @jwt_required_endpoint
+    @jwt_required()
     def options(self) -> Response:
         # Define allowed methods
         allowed_methods = get_class_http_verbs(type(self))
