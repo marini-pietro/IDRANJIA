@@ -11,6 +11,7 @@ from blueprints_utils import (
     create_response,
     validate_json_request,
     handle_options_request,
+    build_update_query_from_filters,
     get_hateos_location_string,
 )
 from config import (
@@ -65,7 +66,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} fetched hydrant with id_ {id_}',
+            message=f"User {get_jwt_identity()} fetched hydrant with id_ {id_}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -73,8 +74,7 @@ class Hydrant(Resource):
         )
 
         # Return the hydrant as a JSON response
-        return create_response(message=hydrant, 
-                               status_code=STATUS_CODES["ok"])
+        return create_response(message=hydrant, status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self) -> Response:
@@ -150,9 +150,7 @@ class Hydrant(Resource):
             )
 
         # Check if the email exists in the database
-        user = fetchone_query(
-            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
-        )
+        user = fetchone_query("SELECT email FROM utenti WHERE email = %s", (email_ins,))
         if user is None:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
@@ -174,9 +172,9 @@ class Hydrant(Resource):
 
         # Insert the new hydrant into the database
         lastrowid = execute_query(
-            "INSERT INTO idranti (stato, latitudine, longitudine, " \
-                                 "comune, via, area_geo, " \
-                                 "tipo, accessibilità, email_ins) " \
+            "INSERT INTO idranti (stato, latitudine, longitudine, "
+            "comune, via, area_geo, "
+            "tipo, accessibilità, email_ins) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 stato,
@@ -194,7 +192,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} created hydrant with id_ {lastrowid}',
+            message=f"User {get_jwt_identity()} created hydrant with id_ {lastrowid}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -211,7 +209,137 @@ class Hydrant(Resource):
         )
 
     @jwt_required()
-    def patch(self) -> Response: ...
+    def patch(self, id_) -> Response:
+        """
+        Update a hydrant row in the database by its ID.
+        """
+
+        # Validate the ID
+        if id_ <= 0:
+            return create_response(
+                message={"error": "id_ must be positive integer"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Check if the ID exists in the database
+        hydrant = fetchone_query("SELECT stato FROM idranti WHERE id = %s", (id_,))
+        if hydrant is None:
+            return create_response(
+                message={"error": "specified resource does not exist in the database"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Validate request
+        data = validate_json_request(request)
+        if isinstance(data, str):
+            return create_response(
+                message={"error": data}, status_code=STATUS_CODES["bad_request"]
+            )
+
+        # Gather the data
+        stato = data.get("stato")
+        latitudine = data.get("latitudine")
+        longitudine = data.get("longitudine")
+        comune = data.get("comune")
+        via = data.get("via")
+        area_geo = data.get("area_geo")
+        tipo = data.get("tipo")
+        accessibilità = data.get("accessibilità")
+
+        # Validate the data
+        if any(
+            var is None
+            for var in [
+                stato,
+                latitudine,
+                longitudine,
+                comune,
+                via,
+                area_geo,
+                tipo,
+                accessibilità,
+            ]
+        ):
+            return create_response(
+                message={"error": "missing required fields."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if stato is not None and isinstance(stato, str):
+            return create_response(
+                message={"error": "stato must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if latitudine is not None and isinstance(latitudine, float):
+            return create_response(
+                message={"error": "latitudine must be float"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if longitudine is not None and isinstance(longitudine, float):
+            return create_response(
+                message={"error": "longitudine must be float"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if comune is not None and isinstance(comune, str):
+            return create_response(
+                message={"error": "comune must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if via is not None and isinstance(via, str):
+            return create_response(
+                message={"error": "via must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if area_geo is not None and isinstance(area_geo, str):
+            return create_response(
+                message={"error": "area_geo must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if tipo is not None and isinstance(tipo, str):
+            return create_response(
+                message={"error": "tipo must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if accessibilità is not None and isinstance(accessibilità, str):
+            return create_response(
+                message={"error": "accessibilità must be string"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Check if the email exists in the database
+        email_ins = get_jwt_identity()
+        user = fetchone_query("SELECT email FROM utenti WHERE email = %s", (email_ins,))
+        if user is None:
+            return create_response(
+                message={"error": "email found in JWT not present in database"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Build the update query
+        query, params = build_update_query_from_filters(
+            data=data, table_name="idranti", pk_column="id", pk_value=id_
+        )
+
+        # Execute the update query
+        execute_query(query, params)
+
+        # Log the action
+        log(
+            type="info",
+            message=f"User {get_jwt_identity()} updated hydrant with id {id_}",
+            origin_name=API_SERVER_NAME_IN_LOG,
+            origin_host=API_SERVER_HOST,
+            origin_port=API_SERVER_PORT,
+            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='PATCH']",
+        )
+
+        # Return the response
+        return create_response(
+            message={
+                "outcome": "successfully updated hydrant",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
+            },
+            status_code=STATUS_CODES["ok"],
+        )
 
     @jwt_required()
     def delete(self, id_) -> Response:
@@ -243,7 +371,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} deleted hydrant with id {id_}',
+            message=f"User {get_jwt_identity()} deleted hydrant with id {id_}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,

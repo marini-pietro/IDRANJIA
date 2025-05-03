@@ -290,7 +290,9 @@ def parse_date_string(date_string: str) -> datetime:
 
 # Database related
 # Lazy initialization for the database connection pool
-_DB_POOL: MySQLConnectionPool  = None  # Private variable to hold the connection pool instance
+_DB_POOL: MySQLConnectionPool = (
+    None  # Private variable to hold the connection pool instance
+)
 
 
 def get_db_pool():
@@ -396,6 +398,7 @@ def check_column_existence(
 
     # If all columns are valid, return True
     return True
+
 
 # Database query related
 def fetchone_query(query: str, params: Tuple[Any]) -> Dict[str, Any]:

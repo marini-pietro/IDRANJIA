@@ -10,6 +10,7 @@ from blueprints_utils import (
     log,
     create_response,
     get_hateos_location_string,
+    build_update_query_from_filters,
     handle_options_request,
     validate_json_request,
 )
@@ -60,7 +61,7 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} fetched operator with id {id_}',
+            message=f"User {get_jwt_identity()} fetched operator with id {id_}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -68,8 +69,7 @@ class Operator(Resource):
         )
 
         # Return the operator as a JSON response
-        return create_response(message=operator, 
-                               status_code=STATUS_CODES["ok"])
+        return create_response(message=operator, status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self) -> Response:
@@ -113,8 +113,7 @@ class Operator(Resource):
 
         # Check if the operator already exists
         operator = fetchone_query(
-            query="SELECT nome FROM operatori WHERE CF = %s", 
-            params=(cf,)
+            query="SELECT nome FROM operatori WHERE CF = %s", params=(cf,)
         )  # Column in SELECT is not important, we just need to check if the row exists
         if operator is not None:
             return create_response(
@@ -131,7 +130,7 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} created operator with id {lastrowid}',
+            message=f"User {get_jwt_identity()} created operator with id {lastrowid}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -148,7 +147,91 @@ class Operator(Resource):
         )
 
     @jwt_required()
-    def patch(self) -> Response: ...
+    def patch(self, id_) -> Response:
+        """
+        Update an operator in the database by its ID.
+        """
+
+        # Validate the id
+        if id_ < 0:
+            return create_response(
+                message={"error": "id must be a positive integer"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Check that the operator exists
+        operator = fetchone_query(
+            query="SELECT nome FROM operatori WHERE id = %s", params=(id_,)
+        )
+        if operator is None:
+            return create_response(
+                message={"error": "no resource found with specified id"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Validate request
+        data = validate_json_request(request)
+        if isinstance(data, str):
+            return create_response(
+                message={"error": data}, status_code=STATUS_CODES["bad_request"]
+            )
+
+        # Gather the data
+        cf = data.get("CF")
+        nome = data.get("nome")
+        cognome = data.get("cognome")
+
+        # Validate the data
+        if any(var is None for var in [cf, nome, cognome]):
+            return create_response(
+                message={"error": "missing required fields."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if cf is not None and isinstance(cf, str):  # TODO add regex check for CF
+            return create_response(
+                message={"error": "cf must be string value."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if nome is not None and isinstance(nome, str):
+            return create_response(
+                message={"error": "name must be string value."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        if cognome is not None and isinstance(cognome, str):
+            return create_response(
+                message={"error": "surname must be string value."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Log the action
+        log(
+            type="info",
+            message=f"User {get_jwt_identity()} updated operator with id {id_}",
+            origin_name=API_SERVER_NAME_IN_LOG,
+            origin_host=API_SERVER_HOST,
+            origin_port=API_SERVER_PORT,
+            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='PATCH']",
+        )
+
+        # Build the update query
+        query, params = build_update_query_from_filters(
+            data=data,
+            table_name="operatori",
+            pk_column="CF",
+            pk_value=cf,
+        )
+
+        # Execute the update query
+        execute_query(query=query, params=params)
+
+        # Return the response
+        return create_response(
+            message={
+                "outcome": "successfully updated operator",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
+            },
+            status_code=STATUS_CODES["ok"],
+        )
 
     @jwt_required()
     def delete(self, CF) -> Response:
@@ -165,8 +248,7 @@ class Operator(Resource):
 
         # Check if the ID exists in the database
         operator = fetchone_query(
-            query="SELECT nome FROM operatori WHERE cf = %s", 
-            params=(CF,)
+            query="SELECT nome FROM operatori WHERE cf = %s", params=(CF,)
         )  # Column in SELECT is not important, we just need to check if the cf exists
         if operator is not None:
             return create_response(
@@ -175,13 +257,12 @@ class Operator(Resource):
             )
 
         # Execute the query
-        execute_query(query="DELETE FROM operatori WHERE CF = %s", 
-                      params=(CF,))
+        execute_query(query="DELETE FROM operatori WHERE CF = %s", params=(CF,))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity()} deleted opearator with cf {CF}',
+            message=f"User {get_jwt_identity()} deleted opearator with cf {CF}",
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
