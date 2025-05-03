@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Creato il: Mag 03, 2025 alle 11:30
+-- Creato il: Mag 03, 2025 alle 13:05
 -- Versione del server: 10.4.32-MariaDB
 -- Versione PHP: 8.2.12
 
@@ -53,9 +53,10 @@ CREATE TABLE `controllo_operatore` (
 --
 
 CREATE TABLE `foto` (
-  `posizione` varchar(255) NOT NULL,
   `data` date NOT NULL COMMENT 'data della foto',
-  `id_idrante` int(11) NOT NULL
+  `id_idrante` int(11) NOT NULL,
+  `posizione` varchar(255) NOT NULL,
+  `id_foto` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -125,7 +126,7 @@ ALTER TABLE `controllo_operatore`
 -- Indici per le tabelle `foto`
 --
 ALTER TABLE `foto`
-  ADD PRIMARY KEY (`posizione`),
+  ADD PRIMARY KEY (`id_foto`),
   ADD KEY `idI` (`id_idrante`);
 
 --
@@ -156,6 +157,12 @@ ALTER TABLE `utenti`
 --
 ALTER TABLE `controlli`
   MODIFY `id_controllo` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT per la tabella `foto`
+--
+ALTER TABLE `foto`
+  MODIFY `id_foto` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT per la tabella `idranti`
