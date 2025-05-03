@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Creato il: Apr 20, 2025 alle 21:42
+-- Creato il: Mag 03, 2025 alle 11:30
 -- Versione del server: 10.4.32-MariaDB
 -- Versione PHP: 8.2.12
 
@@ -28,11 +28,11 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `controlli` (
-  `idC` int(11) NOT NULL,
+  `id_controllo` int(11) NOT NULL,
   `data` date NOT NULL,
   `tipo` enum('periodico') NOT NULL COMMENT 'valori ancora da definire in data 18 aprile',
   `esito` tinyint(1) NOT NULL,
-  `idI` int(11) NOT NULL
+  `id_idrante` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -42,7 +42,7 @@ CREATE TABLE `controlli` (
 --
 
 CREATE TABLE `controllo_operatore` (
-  `idC` int(11) NOT NULL,
+  `id_controllo` int(11) NOT NULL,
   `CF` char(16) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -55,7 +55,7 @@ CREATE TABLE `controllo_operatore` (
 CREATE TABLE `foto` (
   `posizione` varchar(255) NOT NULL,
   `data` date NOT NULL COMMENT 'data della foto',
-  `idI` int(11) NOT NULL
+  `id_idrante` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -71,10 +71,10 @@ CREATE TABLE `idranti` (
   `longitudine` float NOT NULL COMMENT 'precisione di 1.7m' CHECK (`longitudine` >= -180 and `longitudine` <= 180),
   `comune` varchar(255) NOT NULL,
   `via` varchar(255) NOT NULL,
-  `areaGeo` varchar(255) NOT NULL,
+  `area_geo` varchar(255) NOT NULL,
   `tipo` enum('a','b') NOT NULL COMMENT 'valori ancora da definire in data 18 aprile',
   `accessibilità` enum('strada stretta','fruibile da autobotte','privato ma accessibile') NOT NULL COMMENT 'valori ancora da definire in data 18 aprile',
-  `emailIns` varchar(255) NOT NULL COMMENT 'email dell utente che ha inserito la riga'
+  `email_ins` varchar(255) NOT NULL COMMENT 'email dell utente che ha inserito la riga'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -111,14 +111,14 @@ CREATE TABLE `utenti` (
 -- Indici per le tabelle `controlli`
 --
 ALTER TABLE `controlli`
-  ADD PRIMARY KEY (`idC`),
-  ADD KEY `idI` (`idI`);
+  ADD PRIMARY KEY (`id_controllo`),
+  ADD KEY `idI` (`id_idrante`);
 
 --
 -- Indici per le tabelle `controllo_operatore`
 --
 ALTER TABLE `controllo_operatore`
-  ADD PRIMARY KEY (`idC`,`CF`),
+  ADD PRIMARY KEY (`id_controllo`,`CF`),
   ADD KEY `CF` (`CF`);
 
 --
@@ -126,14 +126,14 @@ ALTER TABLE `controllo_operatore`
 --
 ALTER TABLE `foto`
   ADD PRIMARY KEY (`posizione`),
-  ADD KEY `idI` (`idI`);
+  ADD KEY `idI` (`id_idrante`);
 
 --
 -- Indici per le tabelle `idranti`
 --
 ALTER TABLE `idranti`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `emailIns` (`emailIns`);
+  ADD KEY `emailIns` (`email_ins`);
 
 --
 -- Indici per le tabelle `operatori`
@@ -155,7 +155,7 @@ ALTER TABLE `utenti`
 -- AUTO_INCREMENT per la tabella `controlli`
 --
 ALTER TABLE `controlli`
-  MODIFY `idC` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_controllo` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT per la tabella `idranti`
@@ -171,26 +171,26 @@ ALTER TABLE `idranti`
 -- Limiti per la tabella `controlli`
 --
 ALTER TABLE `controlli`
-  ADD CONSTRAINT `controlli_ibfk_1` FOREIGN KEY (`idI`) REFERENCES `idranti` (`id`);
+  ADD CONSTRAINT `controlli_ibfk_1` FOREIGN KEY (`id_idrante`) REFERENCES `idranti` (`id`);
 
 --
 -- Limiti per la tabella `controllo_operatore`
 --
 ALTER TABLE `controllo_operatore`
-  ADD CONSTRAINT `controllo_operatore_ibfk_1` FOREIGN KEY (`idC`) REFERENCES `controlli` (`idC`),
+  ADD CONSTRAINT `controllo_operatore_ibfk_1` FOREIGN KEY (`id_controllo`) REFERENCES `controlli` (`id_controllo`),
   ADD CONSTRAINT `controllo_operatore_ibfk_2` FOREIGN KEY (`CF`) REFERENCES `operatori` (`CF`);
 
 --
 -- Limiti per la tabella `foto`
 --
 ALTER TABLE `foto`
-  ADD CONSTRAINT `foto_ibfk_1` FOREIGN KEY (`idI`) REFERENCES `idranti` (`id`);
+  ADD CONSTRAINT `foto_ibfk_1` FOREIGN KEY (`id_idrante`) REFERENCES `idranti` (`id`);
 
 --
 -- Limiti per la tabella `idranti`
 --
 ALTER TABLE `idranti`
-  ADD CONSTRAINT `idranti_ibfk_1` FOREIGN KEY (`emailIns`) REFERENCES `utenti` (`email`);
+  ADD CONSTRAINT `idranti_ibfk_1` FOREIGN KEY (`email_ins`) REFERENCES `utenti` (`email`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
