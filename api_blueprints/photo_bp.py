@@ -10,9 +10,8 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    has_valid_json,
-    is_input_safe,
-    get_class_http_verbs,
+    validate_json_request,
+    handle_options_request,
     parse_date_string,
 )
 from config import (
@@ -48,8 +47,10 @@ class Photo(Resource):
             )
 
         # Check that hydrant exists
-        hydrant = fetchone_query("SELECT id_ FROM hydrants WHERE id_ = %s", (hydrant_id,))
-        if not hydrant:
+        hydrant = fetchone_query(
+            query="SELECT stato FROM hydrants WHERE id = %s", 
+            params=(hydrant_id,))
+        if hydrant is None:
             return create_response(
                 message={"error": "hydrant not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -57,11 +58,12 @@ class Photo(Resource):
 
         # Get the data
         photos = fetchall_query(
-            "SELECT posizione, data FROM photos WHERE idI = %s", (hydrant_id,)
+            query="SELECT posizione, data FROM photos WHERE id_idrante = %s", 
+            params=(hydrant_id,)
         )
 
         # Check if photos exist
-        if not photos:
+        if photos is None:
             return create_response(
                 message={"error": "no photos found"},
                 status_code=STATUS_CODES["not_found"],
@@ -70,11 +72,11 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched photos with hydrant id_ {hydrant_id}',
+            message=f'User {get_jwt_identity()} fetched photos with hydrant id_ {hydrant_id}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Photo.ENDPOINT_PATHS[0]} Verb GET]",
+            structured_data=f"[endpoint='{Photo.ENDPOINT_PATHS[0]}' verb='GET']",
         )
 
         # Return the photos as a JSON response
@@ -87,21 +89,14 @@ class Photo(Resource):
         """
 
         # Validate request
-        data: Union[str, Dict[str, Any]] = has_valid_json(request)
+        data = validate_json_request(request)
         if isinstance(data, str):
             return create_response(
                 message={"error": data}, status_code=STATUS_CODES["bad_request"]
             )
 
-        # Check for sql injection
-        if not is_input_safe(data):
-            return create_response(
-                message={"error": "invalid input, suspected sql injection"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
         # Gather data
-        hydrant_id = data.get("idI")
+        hydrant_id = data.get("id_idrante")
         position = data.get("posizione")
         date = data.get("data")
 
@@ -149,7 +144,7 @@ class Photo(Resource):
 
         # Check if the photo already exists
         existing_photo = fetchone_query(
-            "SELECT * FROM photos WHERE idI = %s AND posizione = %s AND data = %s",
+            "SELECT * FROM photos WHERE id_idrante = %s AND posizione = %s AND data = %s",
             (hydrant_id, position, date),
         )
         if existing_photo:
@@ -159,13 +154,13 @@ class Photo(Resource):
             )
 
         # Insert the new photo into the database
-        insert_query = "INSERT INTO photos (idI, posizione, data) VALUES (%s, %s, %s)"
+        insert_query = "INSERT INTO photos (id_idrante, posizione, data) VALUES (%s, %s, %s)"
         lastrowid = execute_query(insert_query, (hydrant_id, position, date))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created photo with hydrant id_ {hydrant_id}',
+            message=f'User {get_jwt_identity()} created photo with hydrant id_ {hydrant_id}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -189,19 +184,7 @@ class Photo(Resource):
 
     @jwt_required()
     def options(self) -> Response:
-        # Define allowed methods
-        allowed_methods = get_class_http_verbs(type(self))
-
-        # Create the response
-        response = Response(status=STATUS_CODES["ok"])
-        response.headers["Allow"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Origin"] = (
-            "*"  # Adjust as needed for CORS
-        )
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-
-        return response
+        return handle_options_request(resource_class=self)
 
 
 api.add_resource(Photo, *Photo.ENDPOINT_PATHS)

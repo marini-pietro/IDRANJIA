@@ -9,9 +9,9 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    has_valid_json,
-    is_input_safe,
-    get_class_http_verbs,
+    get_hateos_location_string,
+    handle_options_request,
+    validate_json_request,
 )
 from config import (
     API_SERVER_HOST,
@@ -51,16 +51,16 @@ class Operator(Resource):
         )
 
         # Check if the result is empty
-        if not operator:
+        if operator is None:
             return create_response(
-                message={"error": "No data found for the provided ID."},
+                message={"error": "no resource found with specified id"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched operator with id {id_}',
+            message=f'User {get_jwt_identity()} fetched operator with id {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
@@ -68,7 +68,8 @@ class Operator(Resource):
         )
 
         # Return the operator as a JSON response
-        return create_response(message=operator, status_code=STATUS_CODES["ok"])
+        return create_response(message=operator, 
+                               status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self) -> Response:
@@ -77,17 +78,10 @@ class Operator(Resource):
         """
 
         # Validate request
-        data: Union[str, Dict[str, Any]] = has_valid_json(request)
+        data = validate_json_request(request)
         if isinstance(data, str):
             return create_response(
                 message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
-        # Check for sql injection
-        if not is_input_safe(data):
-            return create_response(
-                message={"error": "invalid input, suspected sql injection"},
-                status_code=STATUS_CODES["bad_request"],
             )
 
         # Gather the data
@@ -118,10 +112,11 @@ class Operator(Resource):
             )
 
         # Check if the operator already exists
-        existing_operator = fetchone_query(
-            "SELECT nome FROM operatori WHERE CF = %s", (cf,)
+        operator = fetchone_query(
+            query="SELECT nome FROM operatori WHERE CF = %s", 
+            params=(cf,)
         )  # Column in SELECT is not important, we just need to check if the row exists
-        if existing_operator:
+        if operator is not None:
             return create_response(
                 message={"error": "operator already exists."},
                 status_code=STATUS_CODES["bad_request"],
@@ -136,18 +131,18 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created operator with id {lastrowid}',
+            message=f'User {get_jwt_identity()} created operator with id {lastrowid}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Operator.ENDPOINT_PATHS[0]} Verb POST]",
+            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='POST']",
         )
 
         # Return the new operator as a JSON response
         return create_response(
             message={
                 "outcome": "operator successfully created",
-                "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Operator.ENDPOINT_PATHS[0]}/{lastrowid}",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -170,25 +165,27 @@ class Operator(Resource):
 
         # Check if the ID exists in the database
         operator = fetchone_query(
-            "SELECT nome FROM operatori WHERE cf = %s", (CF,)
+            query="SELECT nome FROM operatori WHERE cf = %s", 
+            params=(CF,)
         )  # Column in SELECT is not important, we just need to check if the cf exists
-        if operator:
+        if operator is not None:
             return create_response(
-                message={"error": "CF already exist in the database"},
-                status_code=STATUS_CODES["not_found"],
+                message={"error": "operator with specified cf already exists"},
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Execute the query
-        execute_query("DELETE FROM operatori WHERE CF = %s", (CF,))
+        execute_query(query="DELETE FROM operatori WHERE CF = %s", 
+                      params=(CF,))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted opearator with cf {CF}',
+            message=f'User {get_jwt_identity()} deleted opearator with cf {CF}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Operator.ENDPOINT_PATHS[1]} Verb DELETE]",
+            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[1]}' verb='DELETE']",
         )
 
         # Return the response
@@ -199,19 +196,11 @@ class Operator(Resource):
 
     @jwt_required()
     def options(self) -> Response:
-        # Define allowed methods
-        allowed_methods = get_class_http_verbs(type(self))
-
-        # Create the response
-        response = Response(status=STATUS_CODES["ok"])
-        response.headers["Allow"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Origin"] = (
-            "*"  # Adjust as needed for CORS
-        )
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-
-        return response
+        """
+        Handle OPTIONS requests for CORS preflight checks.
+        This method returns the allowed HTTP methods for the endpoint.
+        """
+        return handle_options_request(resource_class=self)
 
 
 api.add_resource(Operator, *Operator.ENDPOINT_PATHS)

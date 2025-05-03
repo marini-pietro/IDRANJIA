@@ -17,7 +17,7 @@ from functools import wraps
 from contextlib import contextmanager
 from flask import jsonify, make_response, Response, Request
 from flask_jwt_extended import get_jwt
-from mysql.connector import pooling as mysql_pooling
+from mysql.connector.pooling import MySQLConnectionPool
 from config import (
     DB_HOST,
     DB_USER,
@@ -185,29 +185,41 @@ def create_response(message: Dict, status_code: int) -> Response:
         TypeError - If the message is not a dictionary or the status code is not an integer
     """
 
-    if not isinstance(message, dict) and not (isinstance(message, list) and all(isinstance(item, dict) for item in message)):
+    if not isinstance(message, dict) and not (
+        isinstance(message, list) and all(isinstance(item, dict) for item in message)
+    ):
         raise TypeError("Message must be a dictionary or a list of dictionaries")
     if not isinstance(status_code, int):
         raise TypeError("Status code must be an integer")
 
-    # message = f"{message}\n{STATUS_CODES_EXPLANATIONS.get(status_code, 'Unknown status code')}"
-
     return make_response(jsonify(message), status_code)
 
 
-def get_class_http_verbs(class_: type) -> List[str]:
+def get_hateos_location_string(bp_name: str, id_: Union[str, int]) -> str:
     """
-    Args:
-        class (type): The class to inspect. Must be a class object, not an instance.
+    Get the location string for HATEOAS links.
+
     Returns:
-        list[str]: A list of HTTP verbs (in uppercase) implemented as methods in the class.
-    Raises:
-        TypeError: If the provided argument is not a class.
+        str: The location string for HATEOAS links.
     """
+
+    protocol = "https" if API_SERVER_SSL else "http"
+    return (
+        f"{protocol}://{API_SERVER_HOST}:{API_SERVER_PORT}{URL_PREFIX}{bp_name}/{id_}"
+    )
+
+
+def handle_options_request(resource_class) -> Response:
+    """
+    Handles OPTIONS requests for the resources.
+    This method is used to determine the allowed HTTP methods for this resource.
+    It returns a 200 OK response with the allowed methods in the Allow header.
+    """
+
     # Ensure the input is a class
-    if not inspect.isclass(class_):
+    if not inspect.isclass(resource_class):
         raise TypeError(
-            f"class_ must be a class, not an instance. Got {class_} instead."
+            f"resource_class must be a class, not an instance. Got {resource_class} instead."
         )
 
     # List of HTTP verbs to filter
@@ -223,22 +235,20 @@ def get_class_http_verbs(class_: type) -> List[str]:
         "CONNECT",
     }
 
-    # Get all methods of the class and filter by HTTP verbs
-    return [verb for verb in http_verbs if hasattr(class_, verb.lower())]
+    # Define allowed methods
+    allowed_methods = [
+        verb for verb in http_verbs if hasattr(resource_class, verb.lower())
+    ]
 
+    # Create the response
+    response = Response(status=STATUS_CODES["ok"])
+    response.headers["Allow"] = ", ".join(allowed_methods)
+    response.headers["Access-Control-Allow-Origin"] = "*"  # Adjust as needed for CORS
+    response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
 
-def get_hateos_location_string(bp_name: str, id_: Union[str, int]) -> str:
-    """
-    Get the location string for HATEOAS links.
-
-    Returns:
-        str: The location string for HATEOAS links.
-    """
-
-    protocol = "https" if API_SERVER_SSL else "http"
-    return (
-        f"{protocol}://{API_SERVER_HOST}:{API_SERVER_PORT}{URL_PREFIX}{bp_name}/{id_}"
-    )
+    return response
 
 
 # Data handling related
@@ -280,14 +290,17 @@ def parse_date_string(date_string: str) -> datetime:
 
 # Database related
 # Lazy initialization for the database connection pool
-_DB_POOL = None  # Private variable to hold the connection pool instance
+_DB_POOL: MySQLConnectionPool  = None  # Private variable to hold the connection pool instance
 
 
 def get_db_pool():
+    """
+    Get the database connection pool instance, initializing it if necessary.
+    """
     global _DB_POOL
     if _DB_POOL is None:  # Initialize only when accessed for the first time
         try:
-            _DB_POOL = mysql_pooling.MySQLConnectionPool(
+            _DB_POOL = MySQLConnectionPool(
                 pool_name="pctowa_connection_pool",
                 pool_size=max(1, CONNECTION_POOL_SIZE),
                 pool_reset_session=False,  # Session reset not needed for this application (no transactions)
@@ -298,8 +311,8 @@ def get_db_pool():
             )
         except socket.error as ex:
             print(
-                f"Couldn't access database, see next line for full exception.\n{ex}\n\n"
-                "host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}"
+                f"Couldn't access database, see next line for full exception.\n{ex}\n"
+                f"host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}"
             )
             sys.exit(1)
     return _DB_POOL
@@ -324,9 +337,14 @@ def clear_db_connection_pool():
     Clear the database connection pool by closing all connections.
     """
     global _DB_POOL
-    for connection in _DB_POOL._cnx_queue:
-        connection.close()
-    _DB_POOL._cnx_queue.clear()
+    if _DB_POOL is not None:
+        while True:
+            try:
+                connection = _DB_POOL.get_connection()
+                connection.close()
+            except Exception:
+                break
+        _DB_POOL = None
 
 
 # Endpoint utility functions
@@ -379,17 +397,7 @@ def check_column_existence(
     # If all columns are valid, return True
     return True
 
-
-# Graceful shutdown handler
-def shutdown_handler():
-    """
-    Handle graceful shutdown of the application.
-    """
-    clear_db_connection_pool()
-    print("Database connection pool cleared. Exiting...")
-    sys.exit(0)
-
-
+# Database query related
 def fetchone_query(query: str, params: Tuple[Any]) -> Dict[str, Any]:
     """
     Execute a query on the database and return the result.
@@ -447,6 +455,7 @@ def log_worker():
     """
     Background thread function to process log messages from the queue.
     """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     while True:
         # Get a log message from the queue
         log_data = log_queue.get()
@@ -472,11 +481,9 @@ def log_worker():
             f"{message}"  # Log message
         )
         try:
-            # Create a UDP socket and send the log message
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.sendto(
-                    syslog_message.encode("utf-8"), (LOG_SERVER_HOST, LOG_SERVER_PORT)
-                )
+            sock.sendto(
+                syslog_message.encode("utf-8"), (LOG_SERVER_HOST, LOG_SERVER_PORT)
+            )
         except socket.error as ex:
             print(f"Failed to send log: {ex}")
 

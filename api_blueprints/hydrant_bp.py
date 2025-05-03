@@ -9,9 +9,9 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    has_valid_json,
-    is_input_safe,
-    get_class_http_verbs,
+    validate_json_request,
+    handle_options_request,
+    get_hateos_location_string,
 )
 from config import (
     API_SERVER_HOST,
@@ -29,6 +29,10 @@ api = Api(hydrant_bp)
 
 
 class Hydrant(Resource):
+    """
+    Hydrant resource for managing hydrant data.
+    This class provides methods to create, read, update, and delete hydrant records.
+    """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
@@ -47,12 +51,12 @@ class Hydrant(Resource):
 
         # Get the data
         hydrant = fetchone_query(
-            "SELECT stato, latitudine, longitudine, comune, via, areaGeo, tipo, accessibilità, emailIns FROM idranti WHERE id_ = %s",
+            "SELECT stato, latitudine, longitudine, comune, via, area_geo, tipo, accessibilità, email_ins FROM idranti WHERE id = %s",
             (id_,),
         )
 
         # Check if the result is empty
-        if not hydrant:
+        if hydrant is None:
             return create_response(
                 message={"error": "No data found for the provided ID."},
                 status_code=STATUS_CODES["not_found"],
@@ -61,15 +65,16 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched hydrant with id_ {id_}',
+            message=f'User {get_jwt_identity()} fetched hydrant with id_ {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Hydrant.ENDPOINT_PATHS[0]} Verb GET]",
+            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='GET']",
         )
 
         # Return the hydrant as a JSON response
-        return create_response(message=hydrant, status_code=STATUS_CODES["ok"])
+        return create_response(message=hydrant, 
+                               status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self) -> Response:
@@ -78,17 +83,10 @@ class Hydrant(Resource):
         """
 
         # Validate request
-        data: Union[str, Dict[str, Any]] = has_valid_json(request)
+        data = validate_json_request(request)
         if isinstance(data, str):
             return create_response(
                 message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
-        # Check for sql injection
-        if not is_input_safe(data):
-            return create_response(
-                message={"error": "invalid input, suspected sql injection"},
-                status_code=STATUS_CODES["bad_request"],
             )
 
         # Gather the data
@@ -97,14 +95,14 @@ class Hydrant(Resource):
         longitudine = data.get("longitudine")
         comune = data.get("comune")
         via = data.get("via")
-        areaGeo = data.get("areaGeo")
+        area_geo = data.get("area_geo")
         tipo = data.get("tipo")
         accessibilità = data.get("accessibilità")
-        emailIns = get_jwt_identity().get("email")
+        email_ins = get_jwt_identity()
 
         # Validate the data
         if not all(
-            [stato, latitudine, longitudine, comune, via, areaGeo, tipo, accessibilità]
+            [stato, latitudine, longitudine, comune, via, area_geo, tipo, accessibilità]
         ):
             return create_response(
                 message={"error": "missing required fields."},
@@ -135,9 +133,9 @@ class Hydrant(Resource):
                 message={"error": "via must be string"},
                 status_code=STATUS_CODES["bad_request"],
             )
-        if not isinstance(areaGeo, str):
+        if not isinstance(area_geo, str):
             return create_response(
-                message={"error": "areaGeo must be string"},
+                message={"error": "area_geo must be string"},
                 status_code=STATUS_CODES["bad_request"],
             )
         if not isinstance(tipo, str):
@@ -152,21 +150,21 @@ class Hydrant(Resource):
             )
 
         # Check if the email exists in the database
-        email_exists = fetchone_query(
-            "SELECT email FROM utenti WHERE email = %s", (emailIns,)
+        user = fetchone_query(
+            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
         )
-        if not email_exists:
+        if user is None:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the hydrant already exists
-        hydrant_exists = fetchone_query(
-            "SELECT areaGeo FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s",
+        hydrant = fetchone_query(
+            "SELECT area_geo FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s",
             (stato, latitudine, longitudine),
         )
-        if hydrant_exists:
+        if hydrant is not None:
             return create_response(
                 message={
                     "error": "hydrant with provided stato, latitudine and longitudine already exists"
@@ -175,37 +173,39 @@ class Hydrant(Resource):
             )
 
         # Insert the new hydrant into the database
-        insert_query = "INSERT INTO idranti (stato, latitudine, longitudine, comune, via, areaGeo, tipo, accessibilità, emailIns) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
         lastrowid = execute_query(
-            insert_query,
+            "INSERT INTO idranti (stato, latitudine, longitudine, " \
+                                 "comune, via, area_geo, " \
+                                 "tipo, accessibilità, email_ins) " \
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 stato,
                 latitudine,
                 longitudine,
                 comune,
                 via,
-                areaGeo,
+                area_geo,
                 tipo,
                 accessibilità,
-                emailIns,
+                email_ins,
             ),
         )
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created hydrant with id_ {lastrowid}',
+            message=f'User {get_jwt_identity()} created hydrant with id_ {lastrowid}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Hydrant.ENDPOINT_PATHS[0]} Verb POST]",
+            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='POST']",
         )
 
         # Return the response
         return create_response(
             message={
                 "outcome": "successfully created new hydrant",
-                "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Hydrant.ENDPOINT_PATHS[0]}/{lastrowid}",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -229,25 +229,25 @@ class Hydrant(Resource):
 
         # Check if the ID exists in the database
         hydrant = fetchone_query(
-            "SELECT stato FROM idranti WHERE id_ = %s", (id_,)
+            "SELECT stato FROM idranti WHERE id = %s", (id_,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if hydrant:
+        if hydrant is None:
             return create_response(
-                message={"error": "id_ already exist in the database"},
+                message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Execute the query
-        execute_query("DELETE FROM idranti WHERE id_ = %s", (id_,))
+        execute_query("DELETE FROM idranti WHERE id = %s", (id_,))
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted hydrant with id_ {id_}',
+            message=f'User {get_jwt_identity()} deleted hydrant with id {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Hydrant.ENDPOINT_PATHS[1]} Verb DELETE]",
+            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[1]}' verb='DELETE']",
         )
 
         # Return the response
@@ -258,19 +258,7 @@ class Hydrant(Resource):
 
     @jwt_required()
     def options(self) -> Response:
-        # Define allowed methods
-        allowed_methods = get_class_http_verbs(type(self))
-
-        # Create the response
-        response = Response(status=STATUS_CODES["ok"])
-        response.headers["Allow"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Origin"] = (
-            "*"  # Adjust as needed for CORS
-        )
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-
-        return response
+        return handle_options_request(resource_class=self)
 
 
 api.add_resource(Hydrant, *Hydrant.ENDPOINT_PATHS)

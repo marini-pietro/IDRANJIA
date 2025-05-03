@@ -9,9 +9,9 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    has_valid_json,
-    is_input_safe,
-    get_class_http_verbs,
+    validate_json_request,
+    parse_date_string,
+    handle_options_request,
     parse_date_string,
 )
 from config import (
@@ -46,7 +46,8 @@ class Control(Resource):
 
         # Get the data
         control = fetchone_query(
-            "SELECT tipo, esito, data, idI FROM controlli WHERE _ = %s", (id_,)
+            query="SELECT tipo, esito, data, id_idrante FROM controlli WHERE id_controllo = %s", 
+            params=(id_,)
         )
 
         # Check if the result is empty
@@ -59,15 +60,16 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} fetched control with id {id_}',
+            message=f'User {get_jwt_identity()} fetched control with id {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Control.ENDPOINT_PATHS[0]} Verb GET]",
+            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[0]}' verb='GET']",
         )
 
         # Return the control as a JSON response
-        return create_response(message=control, status_code=STATUS_CODES["ok"])
+        return create_response(message=control, 
+                               status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self) -> Response:
@@ -77,27 +79,20 @@ class Control(Resource):
         """
 
         # Validate request
-        data: Union[str, Dict[str, Any]] = has_valid_json(request)
+        data: Union[str, Dict[str, Any]] = validate_json_request(request)
         if isinstance(data, str):
             return create_response(
                 message={"error": data}, status_code=STATUS_CODES["bad_request"]
             )
 
-        # Check for sql injection
-        if not is_input_safe(data):
-            return create_response(
-                message={"error": "invalid input, suspected sql injection"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
         # Gather the data
-        tipo = data.get("tipo")
-        esito = data.get("esito")
-        data = data.get("data")
-        idI = data.get("idI")
+        tipo: str = data.get("tipo")
+        esito: bool = data.get("esito")
+        data = parse_date_string(data.get("data"))
+        id_idrante: int = data.get("id_idrante")
 
         # Validate the data
-        if not all([tipo, esito, data, idI]):
+        if not all([tipo, esito, data, id_idrante]):
             return create_response(
                 message={"error": "missing required fields."},
                 status_code=STATUS_CODES["bad_request"],
@@ -118,42 +113,43 @@ class Control(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
         if not (
-            isinstance(idI, int) and idI >= 0 or isinstance(idI, str) and idI.isdigit()
+            (isinstance(id_idrante, int) and id_idrante >= 0) or (isinstance(id_idrante, str) and id_idrante.isdigit())
         ):
             return create_response(
-                message={"error": "idI must be a positive integer or a numeric string"},
+                message={"error": "id_idrante must be a positive integer or a numeric string"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Perform casting if needed
-        if isinstance(idI, str):
-            idI = int(idI)
+        if isinstance(id_idrante, str):
+            id_idrante = int(id_idrante)
         data = parse_date_string(data)
 
-        # Check that the idI exists in the database
-        idI_exists = fetchone_query(
-            "SELECT stato FROM idranti WHERE id = %s", (idI,)
+        # Check that the id_idrante exists in the database
+        hydrant = fetchone_query(
+            query="SELECT stato FROM idranti WHERE id = %s", 
+            params=(id_idrante,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if not idI_exists:
+        if hydrant is None:
             return create_response(
-                message={"error": "idI does not exist in the database"},
+                message={"error": "id_idrante does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Execute the query
         lastrowid = execute_query(
-            "INSERT INTO controlli (tipo, esito, data, idI) VALUES (%s, %s, %s, %s)",
-            (tipo, esito, data, idI),
+            query="INSERT INTO controlli (tipo, esito, data, id_idrante) VALUES (%s, %s, %s, %s)",
+            params=(tipo, esito, data, id_idrante),
         )
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} created control with id_ {lastrowid}',
+            message=f'User {get_jwt_identity()} created control with id_ {lastrowid}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Control.ENDPOINT_PATHS[0]} Verb POST]",
+            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[0]}' verb='POST']",
         )
 
         # Return the response
@@ -184,25 +180,29 @@ class Control(Resource):
 
         # Check if the ID exists in the database
         control = fetchone_query(
-            "SELECT esito FROM controlli WHERE idC = %s", (id_,)
+            query="SELECT esito FROM controlli WHERE id_controllo = %s", 
+            params=(id_,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if not control:
+        if control is None:
             return create_response(
-                message={"error": "id_ does not exist in the database"},
+                message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Execute the query
-        execute_query("DELETE FROM controlli WHERE idC = %s", (id_,))
+        execute_query(
+                      query="DELETE FROM controlli WHERE id_controllo = %s", 
+                      params=(id_,)
+                      )
 
         # Log the action
         log(
             type="info",
-            message=f'User {get_jwt_identity().get("email")} deleted control with id_ {id_}',
+            message=f'User {get_jwt_identity()} deleted control with id_ {id_}',
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[{Control.ENDPOINT_PATHS[1]} Verb DELETE]",
+            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[1]}' verb='DELETE']",
         )
 
         # Return the response
@@ -213,19 +213,7 @@ class Control(Resource):
 
     @jwt_required()
     def options(self) -> Response:
-        # Define allowed methods
-        allowed_methods = get_class_http_verbs(type(self))
-
-        # Create the response
-        response = Response(status=STATUS_CODES["ok"])
-        response.headers["Allow"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Origin"] = (
-            "*"  # Adjust as needed for CORS
-        )
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-
-        return response
+        return handle_options_request(resource_class=self)
 
 
 api.add_resource(Control, *Control.ENDPOINT_PATHS)

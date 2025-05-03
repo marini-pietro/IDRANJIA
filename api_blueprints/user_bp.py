@@ -13,7 +13,7 @@ from blueprints_utils import (
     build_update_query_from_filters,
     has_valid_json,
     is_input_safe,
-    get_class_http_verbs,
+    handle_options_request,
 )
 from config import (
     API_SERVER_HOST,
@@ -51,19 +51,7 @@ class User(Resource):
 
     @jwt_required()
     def options(self) -> Response:
-        # Define allowed methods
-        allowed_methods = get_class_http_verbs(type(self))
-
-        # Create the response
-        response = Response(status=STATUS_CODES["ok"])
-        response.headers["Allow"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Origin"] = (
-            "*"  # Adjust as needed for CORS
-        )
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-
-        return response
+        return handle_options_request(resource_class=self)
 
 
 api.add_resource(User, *User.ENDPOINT_PATHS)

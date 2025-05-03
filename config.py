@@ -105,7 +105,7 @@ STATUS_CODES: Dict[str, int] = {
     "service_unavailable": 503,
 }
 # | Roles and their corresponding IDs
-ROLES: Dict[int, str] = {0: "admin", 1: "teacher", 2: "tutor", 3: "supertutor"}
+ROLES: Dict[int, str] = {0: "admin", 1: "user"}
 
 # | Standard not authorized message
 NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {
