@@ -9,7 +9,6 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    validate_json_request,
     build_update_query_from_filters,
     parse_date_string,
     get_hateos_location_string,
@@ -43,17 +42,20 @@ class Control(Resource):
         """
 
         # Validate the ID
-        if not isinstance(id_, int) or id_ <= 0:
-            return create_response(STATUS_CODES["BAD_REQUEST"], "Invalid ID provided.")
+        if id_ <= 0:
+            return create_response(
+                message={"error": "control id must be positive integer."},
+                status_code=STATUS_CODES["BAD_REQUEST"],
+            )
 
         # Get the data
-        control = fetchone_query(
+        control: Dict[str, Any] = fetchone_query(
             query="SELECT tipo, esito, data, id_idrante FROM controlli WHERE id_controllo = %s",
             params=(id_,),
         )
 
         # Check if the result is empty
-        if not control:
+        if control is None:
             return create_response(
                 message={"error": "No data found for the provided ID."},
                 status_code=STATUS_CODES["not_found"],
@@ -79,14 +81,8 @@ class Control(Resource):
         The data is passed as a JSON body.
         """
 
-        # Validate request
-        data: Union[str, Dict[str, Any]] = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         tipo: str = data.get("tipo")
         esito: bool = data.get("esito")
         data = parse_date_string(data.get("data"))
@@ -130,7 +126,7 @@ class Control(Resource):
         data = parse_date_string(data)
 
         # Check that the id_idrante exists in the database
-        hydrant = fetchone_query(
+        hydrant: Dict[str, Any] = fetchone_query(
             query="SELECT stato FROM idranti WHERE id = %s", params=(id_idrante,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
         if hydrant is None:
@@ -181,7 +177,7 @@ class Control(Resource):
             )
 
         # Check that the control exists in the database
-        control = fetchone_query(
+        control: Dict[str, Any] = fetchone_query(
             query="SELECT tipo FROM controlli WHERE id_controllo = %s", params=(id_,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
         if control is None:
@@ -190,14 +186,8 @@ class Control(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Validate request
-        data: Union[str, Dict[str, Any]] = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         tipo: str = data.get("tipo")
         esito: bool = data.get("esito")
         data = parse_date_string(data.get("data"))
@@ -240,7 +230,7 @@ class Control(Resource):
             id_idrante = int(id_idrante)
 
         # Check that the id_idrante exists in the database
-        hydrant = fetchone_query(
+        hydrant: Dict[str, Any] = fetchone_query(
             query="SELECT stato FROM idranti WHERE id = %s", params=(id_idrante,)
         )  # Column in SELECT is not important, we just need to check if the id_ exists
         if hydrant is None:
@@ -288,26 +278,23 @@ class Control(Resource):
         """
 
         # Validate the ID
-        if not isinstance(id_, int) or id_ < 0:
+        if id_ < 0:
             return create_response(
                 message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check if the ID exists in the database
-        control = fetchone_query(
-            query="SELECT esito FROM controlli WHERE id_controllo = %s", params=(id_,)
-        )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if control is None:
+        # Execute the query
+        _, rows_affected = execute_query(
+            query="DELETE FROM controlli WHERE id_controllo = %s", params=(id_,)
+        )
+
+        # Check if the row was deleted
+        if rows_affected == 0:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
-
-        # Execute the query
-        execute_query(
-            query="DELETE FROM controlli WHERE id_controllo = %s", params=(id_,)
-        )
 
         # Log the action
         log(

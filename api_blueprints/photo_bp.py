@@ -10,7 +10,6 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    validate_json_request,
     handle_options_request,
     build_update_query_from_filters,
     get_hateos_location_string,
@@ -90,14 +89,8 @@ class Photo(Resource):
         Create a new photo row in the database.
         """
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather data
+        data = request.get_json()
         hydrant_id = data.get("id_idrante")
         position = data.get("posizione")
         date = data.get("data")
@@ -208,14 +201,8 @@ class Photo(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather data
+        data = request.get_json()
         position = data.get("posizione")
         data = data.get("data")
         id_idrante = data.get("id_idrante")
@@ -337,14 +324,13 @@ class Photo(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check that the photo exists
-        photo = fetchone_query(
-            query="SELECT data FROM photos WHERE id_foto = %s",
-            params=(
-                id_,
-            ),  # Only fecth to check for existence (select column could be any)
+        # Delete the photo from the database
+        _, rows_affected = execute_query(
+            query="DELETE FROM photos WHERE id_foto = %s", params=(id_,)
         )
-        if photo is None:
+
+        # Check if any rows were affected
+        if rows_affected == 0:
             return create_response(
                 message={"error": "photo with specfied id not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -357,11 +343,8 @@ class Photo(Resource):
             origin_name=API_SERVER_NAME_IN_LOG,
             origin_host=API_SERVER_HOST,
             origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Photo.ENDPOINT_PATHS[0]}' verb='DELETE']",
+            structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
-
-        # Delete the photo from the database
-        execute_query(query="DELETE FROM photos WHERE id_foto = %s", params=(id_,))
 
         # Return the response
         return create_response(

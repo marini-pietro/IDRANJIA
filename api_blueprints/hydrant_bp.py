@@ -9,7 +9,6 @@ from blueprints_utils import (
     execute_query,
     log,
     create_response,
-    validate_json_request,
     handle_options_request,
     build_update_query_from_filters,
     get_hateos_location_string,
@@ -51,7 +50,7 @@ class Hydrant(Resource):
             )
 
         # Get the data
-        hydrant = fetchone_query(
+        hydrant: Dict[str, Any] = fetchone_query(
             "SELECT stato, latitudine, longitudine, comune, via, area_geo, tipo, accessibilità, email_ins FROM idranti WHERE id = %s",
             (id_,),
         )
@@ -82,14 +81,8 @@ class Hydrant(Resource):
         Create a new hydrant row in the database.
         """
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         stato = data.get("stato")
         latitudine = data.get("latitudine")
         longitudine = data.get("longitudine")
@@ -150,7 +143,9 @@ class Hydrant(Resource):
             )
 
         # Check if the email exists in the database
-        user = fetchone_query("SELECT email FROM utenti WHERE email = %s", (email_ins,))
+        user: Dict[str, Any] = fetchone_query(
+            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
+        )
         if user is None:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
@@ -158,7 +153,7 @@ class Hydrant(Resource):
             )
 
         # Check if the hydrant already exists
-        hydrant = fetchone_query(
+        hydrant: Dict[str, Any] = fetchone_query(
             "SELECT area_geo FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s",
             (stato, latitudine, longitudine),
         )
@@ -222,21 +217,17 @@ class Hydrant(Resource):
             )
 
         # Check if the ID exists in the database
-        hydrant = fetchone_query("SELECT stato FROM idranti WHERE id = %s", (id_,))
+        hydrant: Dict[str, Any] = fetchone_query(
+            "SELECT stato FROM idranti WHERE id = %s", (id_,)
+        )
         if hydrant is None:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         stato = data.get("stato")
         latitudine = data.get("latitudine")
         longitudine = data.get("longitudine")
@@ -307,7 +298,9 @@ class Hydrant(Resource):
 
         # Check if the email exists in the database
         email_ins = get_jwt_identity()
-        user = fetchone_query("SELECT email FROM utenti WHERE email = %s", (email_ins,))
+        user: Dict[str, Any] = fetchone_query(
+            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
+        )
         if user is None:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
@@ -349,24 +342,21 @@ class Hydrant(Resource):
         """
 
         # Validate the ID
-        if not isinstance(id_, int) or id_ < 0:
+        if id_ < 0:
             return create_response(
                 message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check if the ID exists in the database
-        hydrant = fetchone_query(
-            "SELECT stato FROM idranti WHERE id = %s", (id_,)
-        )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if hydrant is None:
+        # Execute the query
+        _, rows_affected = execute_query("DELETE FROM idranti WHERE id = %s", (id_,))
+
+        # Check if any rows were affected
+        if rows_affected == 0:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
-
-        # Execute the query
-        execute_query("DELETE FROM idranti WHERE id = %s", (id_,))
 
         # Log the action
         log(

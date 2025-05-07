@@ -4,7 +4,6 @@ These functions include data validation, authorization checks, response creation
 database connection handling, logging, and token validation.
 """
 
-import re
 import inspect
 import sys
 import socket
@@ -16,7 +15,7 @@ from os import getpid
 from typing import Dict, List, Tuple, Any, Union
 from functools import wraps
 from contextlib import contextmanager
-from flask import jsonify, make_response, Response, Request
+from flask import jsonify, make_response, Response
 from flask_jwt_extended import get_jwt
 from mysql.connector.pooling import MySQLConnectionPool
 from threading import Lock, Thread
@@ -39,101 +38,6 @@ from config import (
     RATE_LIMIT_MAX_REQUESTS,
     RATE_LIMIT_TIME_WINDOW,
 )
-
-# Data validation related
-# Precompile the regex pattern once
-SQL_PATTERN = re.compile(
-    r"\b("
-    + "|".join(
-        [
-            r"SELECT",
-            r"INSERT",
-            r"UPDATE",
-            r"DELETE",
-            r"DROP",
-            r"CREATE",
-            r"ALTER",
-            r"EXEC",
-            r"UNION",
-            r"ALL",
-            r"WHERE",
-            r"FROM",
-            r"TABLE",
-            r"JOIN",
-            r"TRUNCATE",
-            r"REPLACE",
-            r"GRANT",
-            r"REVOKE",
-            r"DECLARE",
-            r"CAST",
-            r"SET",
-        ]
-    )
-    + r")\b",
-    re.IGNORECASE,
-)
-
-
-def is_input_safe(data: Union[str, List[str], Dict[Any, str]]) -> bool:
-    """
-    Check if the input data (string, list, or dictionary) contains SQL instructions.
-    Returns True if safe, False if potentially unsafe.
-
-    :param data: str, list, or dict - The input data to validate.
-    :return: bool - True if the input is safe, False otherwise.
-    """
-    if isinstance(data, str):
-        return not bool(SQL_PATTERN.search(data))
-    if isinstance(data, list):
-        return all(
-            isinstance(item, str) and not bool(SQL_PATTERN.search(item))
-            for item in data
-        )
-    if isinstance(data, dict):
-        return all(
-            isinstance(value, str) and not bool(SQL_PATTERN.search(value))
-            for value in data.values()
-        )
-    else:
-        raise TypeError(
-            "Input must be a string, list of strings, or dictionary with string values."
-        )
-
-
-def has_valid_json(request_instance: Request) -> Union[str, Dict[str, Any]]:
-    """
-    Check if the request has a valid JSON body.
-
-    :param request: The Flask request object.
-    :return: str or dict - The JSON data if valid, or an error string if invalid.
-    """
-    if not request_instance.is_json or request_instance.json is None:
-        return "Request body must be valid JSON with Content-Type: application/json"
-    try:
-        data = request_instance.get_json(silent=False)
-        return data if data != {} else "Request body must not be empty"
-    except ValueError:
-        return "Invalid JSON format"
-
-
-def validate_json_request(request_instance: Request) -> Union[str, Dict[str, Any]]:
-    """
-    Check that a request that should contain a JSON body has a valid JSON body and is safe from SQL injection.
-    If the request is valid, return the JSON data.
-    Otherwise, return an error message.
-    """
-
-    # Validate request
-    data: Union[str, Dict[str, Any]] = has_valid_json(request_instance)
-    if isinstance(data, str):
-        return data
-
-    # Check for sql injection
-    if not is_input_safe(data):
-        return "invalid input, suspected sql injection"
-
-    # If the request is valid, return the data
-    return data
 
 
 # Authorization related
@@ -414,6 +318,9 @@ def build_update_query_from_filters(
         None
     """
 
+    # Remove keys with None values from the dictionary
+    data = {key: value for key, value in data.items() if value is not None}
+
     filters = ", ".join([f"{key} = %s" for key in data.keys()])
     params = list(data.values()) + [pk_value]
     query = f"UPDATE {table_name} SET {filters} WHERE {pk_column} = %s"
@@ -476,7 +383,7 @@ def fetchall_query(query: str, params: Tuple[Any]) -> List[Dict[str, Any]]:
             return cursor.fetchall()
 
 
-def execute_query(query: str, params: Tuple[Any]) -> int:
+def execute_query(query: str, params: Tuple[Any]) -> Tuple[int, int]:
     """
     Execute a query on the database and commit the changes.
 
@@ -486,13 +393,14 @@ def execute_query(query: str, params: Tuple[Any]) -> int:
 
     returns:
         The ID of the last inserted row, if applicable
+        The number of rows affected by the query
     """
     # Use a context manager to ensure the connection is closed after use
     with get_db_connection() as connection:
         with connection.cursor(dictionary=True) as cursor:
             cursor.execute(query, params)
             connection.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid, cursor.rowcount
 
 
 # Log server related

@@ -3,7 +3,8 @@ Authentication server for user login and JWT token generation.
 This server provides endpoints for user authentication, token validation, and health checks.
 """
 
-from typing import Dict, Any, Union
+import re
+from typing import Dict, Union, List, Any
 from flask import Flask, request, jsonify
 from flask_jwt_extended import (
     JWTManager,
@@ -16,7 +17,6 @@ from api_blueprints.blueprints_utils import (
     log,
     fetchone_query,
     is_rate_limited,
-    validate_json_request,
 )
 from config import (
     AUTH_SERVER_HOST,
@@ -32,6 +32,7 @@ from config import (
     AUTH_SERVER_SSL,
     AUTH_SERVER_SSL_CERT,
     AUTH_SERVER_SSL_KEY,
+    SQL_PATTERN,
 )
 
 # Initialize Flask app
@@ -53,6 +54,90 @@ app.config["JWT_ALGORITHM"] = JWT_ALGORITHM
 jwt = JWTManager(app)
 
 
+def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
+    """
+    Check if the input data (string, list, or dictionary) contains SQL instructions.
+    Returns True if safe, False if potentially unsafe.
+
+    :param data: str, list, or dict - The input data to validate.
+    :return: bool - True if the input is safe, False otherwise.
+    """
+    if isinstance(data, str):
+        return not bool(SQL_PATTERN.search(data))
+    if isinstance(data, list):
+        return all(
+            isinstance(item, str) and not bool(SQL_PATTERN.search(item))
+            for item in data
+        )
+    if isinstance(data, dict):
+        return all(
+            isinstance(key, str)
+            and isinstance(value, str)
+            and not bool(SQL_PATTERN.search(value))
+            for key, value in data.items()
+        )
+    else:
+        raise TypeError(
+            "Input must be a string, list of strings, or dictionary with string keys and values."
+        )
+
+
+@app.before_request
+def validate_user_data():
+    """
+    Validate user data for all incoming requests by checking for SQL injection, JSON presence for methods that use them and JSON format.
+    This function is called before each request to ensure that the data is safe and valid.
+    This does check for any endpoint specific validation, which should be done in the respective blueprint.
+    """
+    # Validate JSON body for POST, PUT, PATCH methods
+    if request.method in ["POST", "PUT", "PATCH"]:
+        if not request.is_json or request.json is None:
+            return (
+                jsonify(
+                    "Request body must be valid JSON with Content-Type: application/json"
+                ),
+                STATUS_CODES["bad_request"],
+            )
+        try:
+            data = request.get_json(silent=False)
+            if data == {}:
+                return (
+                    jsonify("Request body must not be empty"),
+                    STATUS_CODES["bad_request"],
+                )
+        except ValueError:
+            return (jsonify("Invalid JSON format"), STATUS_CODES["bad_request"])
+
+        # Validate JSON keys and values for SQL injection
+        for key, value in data.items():
+            if not is_input_safe(key):
+                return (
+                    jsonify(
+                        {"error": f"Invalid JSON key: {key} suspected SQL injection"}
+                    ),
+                    STATUS_CODES["bad_request"],
+                )
+            if isinstance(value, str) and not is_input_safe(value):
+                return (
+                    jsonify(
+                        {
+                            "error": f"Invalid JSON value for key '{key}': suspected SQL injection"
+                        }
+                    ),
+                    STATUS_CODES["bad_request"],
+                )
+
+    # Validate path variables (if needed)
+    for key, value in request.view_args.items():
+        if not is_input_safe(value):
+            return (
+                jsonify(
+                    {"error": f"Invalid path variable: {key} suspected SQL injection"}
+                ),
+                STATUS_CODES["bad_request"],
+            )
+
+
 @app.before_request
 def enforce_rate_limit():
     """
@@ -72,11 +157,9 @@ def login():
     """
     Login endpoint to authenticate users and generate JWT tokens.
     """
-    # Validate request
-    data: Union[str, Dict[str, Any]] = validate_json_request(request)
-    if isinstance(data, str):
-        return jsonify({"error": data}), STATUS_CODES["bad_request"]
 
+    # Gather parameters
+    data = request.get_json()
     email: str = data.get("email")
     password: str = data.get("password")
 
@@ -150,11 +233,14 @@ def health_check():
 
 
 if __name__ == "__main__":
-    app.run(host=AUTH_SERVER_HOST, 
-            port=AUTH_SERVER_PORT, 
-            debug=AUTH_SERVER_DEBUG_MODE,
-            ssl_context=(AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
-            )
+    app.run(
+        host=AUTH_SERVER_HOST,
+        port=AUTH_SERVER_PORT,
+        debug=AUTH_SERVER_DEBUG_MODE,
+        ssl_context=(
+            (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
+        ),
+    )
     log(
         log_type="info",
         message="Authentication server started",

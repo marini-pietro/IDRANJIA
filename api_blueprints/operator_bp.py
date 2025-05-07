@@ -12,7 +12,6 @@ from blueprints_utils import (
     get_hateos_location_string,
     build_update_query_from_filters,
     handle_options_request,
-    validate_json_request,
 )
 from config import (
     API_SERVER_HOST,
@@ -77,14 +76,8 @@ class Operator(Resource):
         Create a new operator row in the database.
         """
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         cf = data.get("CF")
         name = data.get("nome")
         surname = data.get("cognome")
@@ -169,14 +162,8 @@ class Operator(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Validate request
-        data = validate_json_request(request)
-        if isinstance(data, str):
-            return create_response(
-                message={"error": data}, status_code=STATUS_CODES["bad_request"]
-            )
-
         # Gather the data
+        data = request.get_json()
         cf = data.get("CF")
         nome = data.get("nome")
         cognome = data.get("cognome")
@@ -246,18 +233,17 @@ class Operator(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check if the ID exists in the database
-        operator = fetchone_query(
-            query="SELECT nome FROM operatori WHERE cf = %s", params=(CF,)
-        )  # Column in SELECT is not important, we just need to check if the cf exists
-        if operator is not None:
-            return create_response(
-                message={"error": "operator with specified cf already exists"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
         # Execute the query
-        execute_query(query="DELETE FROM operatori WHERE CF = %s", params=(CF,))
+        _, rows_affected = execute_query(
+            query="DELETE FROM operatori WHERE CF = %s", params=(CF,)
+        )
+
+        # Check if any rows were affected
+        if rows_affected == 0:
+            return create_response(
+                message={"error": "no resource found with specified cf"},
+                status_code=STATUS_CODES["not_found"],
+            )
 
         # Log the action
         log(
