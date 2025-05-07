@@ -9,7 +9,8 @@ import inspect
 import sys
 import socket
 import queue
-import threading
+import json
+import time
 from datetime import datetime, timezone
 from os import getpid
 from typing import Dict, List, Tuple, Any, Union
@@ -18,6 +19,7 @@ from contextlib import contextmanager
 from flask import jsonify, make_response, Response, Request
 from flask_jwt_extended import get_jwt
 from mysql.connector.pooling import MySQLConnectionPool
+from threading import Lock, Thread
 from config import (
     DB_HOST,
     DB_USER,
@@ -33,6 +35,9 @@ from config import (
     API_SERVER_PORT,
     URL_PREFIX,
     API_SERVER_SSL,
+    RATE_LIMIT_FILE_NAME,
+    RATE_LIMIT_MAX_REQUESTS,
+    RATE_LIMIT_TIME_WINDOW,
 )
 
 # Data validation related
@@ -251,6 +256,44 @@ def handle_options_request(resource_class) -> Response:
     return response
 
 
+rate_limit_lock = Lock()  # Lock for thread-safe file access
+
+
+def is_rate_limited(client_ip: str) -> bool:
+    """
+    Check if the client IP is rate-limited.
+    """
+    with rate_limit_lock:
+        try:
+            # Load the rate limit data
+            with open(RATE_LIMIT_FILE_NAME, "r") as file:
+                rate_limit_data = json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            rate_limit_data = {}
+
+        current_time = time.time()
+        client_data = rate_limit_data.get(
+            client_ip, {"count": 0, "timestamp": current_time}
+        )
+
+        # Reset the count if the time window has passed
+        if current_time - client_data["timestamp"] > RATE_LIMIT_TIME_WINDOW:
+            client_data = {"count": 0, "timestamp": current_time}
+
+        # Increment the request count
+        client_data["count"] += 1
+
+        # Update the rate limit data
+        rate_limit_data[client_ip] = client_data
+
+        # Save the updated data back to the file
+        with open(RATE_LIMIT_FILE_NAME, "w") as file:
+            json.dump(rate_limit_data, file)
+
+        # Check if the rate limit is exceeded
+        return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
+
+
 # Data handling related
 def parse_time_string(time_string: str) -> datetime:
     """
@@ -300,7 +343,9 @@ def get_db_pool():
     Get the database connection pool instance, initializing it if necessary.
     """
     global _DB_POOL
-    if _DB_POOL is None:  # Initialize only when accessed for the first time
+    if (
+        _DB_POOL is None
+    ):  # Initialize only when accessed for the first time (lazy initialization)
         try:
             _DB_POOL = MySQLConnectionPool(
                 pool_name="pctowa_connection_pool",
@@ -314,7 +359,8 @@ def get_db_pool():
         except socket.error as ex:
             print(
                 f"Couldn't access database, see next line for full exception.\n{ex}\n"
-                f"host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}"
+                f"host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}\n"
+                f"Make sure to shutdown all microservices with the provided kill_quick script, change the configuration and try again.\n"
             )
             sys.exit(1)
     return _DB_POOL
@@ -495,7 +541,7 @@ def log_worker():
 
 
 # Start the background thread
-log_thread = threading.Thread(target=log_worker, daemon=True)
+log_thread = Thread(target=log_worker, daemon=True)
 log_thread.start()
 
 

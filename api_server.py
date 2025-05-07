@@ -9,10 +9,10 @@ from os.path import join as os_path_join
 from os.path import dirname as os_path_dirname
 from os.path import abspath as os_path_abspath
 from importlib import import_module
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_jwt_extended import JWTManager
 from api_blueprints import __all__  # Import all the blueprints
-from api_blueprints.blueprints_utils import log
+from api_blueprints.blueprints_utils import log, is_rate_limited
 from config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
@@ -30,6 +30,10 @@ from config import (
     JWT_REFRESH_JSON_KEY,
     JWT_TOKEN_LOCATION,
     JWT_REFRESH_TOKEN_EXPIRES,
+    API_SERVER_RATE_LIMIT,
+    API_SERVER_SSL,
+    API_SERVER_SSL_CERT,
+    API_SERVER_SSL_KEY,
 )
 
 # Create a Flask app
@@ -79,6 +83,20 @@ for filename in os_listdir(blueprints_dir):
         print(f"Registered blueprint: {module_name} with prefix {URL_PREFIX}")
 
 
+@app.before_request
+def enforce_rate_limit():
+    """
+    Enforce rate limiting for all incoming requests.
+    """
+    if API_SERVER_RATE_LIMIT:  # Check if rate limiting is enabled
+        client_ip = request.remote_addr
+        if is_rate_limited(client_ip):
+            return (
+                jsonify({"error": "Rate limit exceeded"}),
+                STATUS_CODES["too_many_requests"],
+            )
+
+
 # Handle unauthorized access (missing token)
 @jwt.unauthorized_loader
 def custom_unauthorized_response(callback):
@@ -88,6 +106,14 @@ def custom_unauthorized_response(callback):
 # Handle invalid tokens
 @jwt.invalid_token_loader
 def custom_invalid_token_response(callback):
+    log(
+        log_type="error",
+        message=f"api reached with invalid token, callback: {callback}",
+        origin_name=API_SERVER_NAME_IN_LOG,
+        origin_host=API_SERVER_HOST,
+        message_id="UserAction",
+        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+    )
     return jsonify({"error": "Invalid token"}), STATUS_CODES["unprocessable_entity"]
 
 
@@ -136,12 +162,16 @@ def list_endpoints():
 
 
 if __name__ == "__main__":
-    app.run(host=API_SERVER_HOST, port=API_SERVER_PORT, debug=API_SERVER_DEBUG_MODE)
+    app.run(host=API_SERVER_HOST, 
+            port=API_SERVER_PORT, 
+            debug=API_SERVER_DEBUG_MODE,
+            ssl_context=(API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if API_SERVER_SSL else None
+            )
     log(
         log_type="info",
         message="API server started",
         origin_name=API_SERVER_NAME_IN_LOG,
         origin_host=API_SERVER_HOST,
         message_id="UserAction",
-        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+        structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
     )

@@ -16,22 +16,22 @@ AUTH_SERVER_HOST: str = "localhost"  # The host of the authentication server
 AUTH_SERVER_PORT: int = 6002  # The port of the authentication server
 AUTH_SERVER_NAME_IN_LOG: str = "auth-server"
 AUTH_SERVER_DEBUG_MODE: bool = True
-AUTH_SERVER_SSL: bool = False  # Whether the authentication server uses SSL/TLS or not
-AUTH_SERVER_SSL_CERT: str = (
-    "/path/to/cert.pem"  # The path to the SSL/TLS certificate file
+AUTH_SERVER_RATE_LIMIT: bool = (
+    True  # Whether to enable rate limiting on the authentication server
 )
-AUTH_SERVER_SSL_KEY: str = "/path/to/key.pem"  # The path to the SSL/TLS key file
+AUTH_SERVER_SSL_CERT: str = "" # The path to the SSL/TLS certificate file
+AUTH_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
+AUTH_SERVER_SSL: bool = not (AUTH_SERVER_SSL_CERT == "" and AUTH_SERVER_SSL_KEY == "")  # Whether the authentication server uses SSL/TLS or not
 
 # Log server related settings
 LOG_SERVER_HOST: str = "localhost"  # The host of the log server
 LOG_SERVER_PORT: int = (
     6014  # The port of the log server (default syslog port, can modified to open port for testing)
 )
-LOG_FILE_NAME: str = "pctowa_log.txt"
-LOGGER_NAME: str = "pctowa_logger"  # The name of the logger
+LOG_FILE_NAME: str = "idranjia_log.txt"
+LOGGER_NAME: str = "idranjia_logger"  # The name of the logger
 LOG_SERVER_NAME_IN_LOG: str = "log-server"  # The name of the server in the log messages
-RATE_LIMIT_AMOUNT: int = 100  # Maximum messages per source
-RATE_LIMIT_AMOUNT_TIME_WINDOW: int = 1  # Time window in seconds
+LOG_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the log server
 DELAYED_LOGS_QUEUE_SIZE: int = 100  # The size of the delayed logs queue
 # (if the queue is full, the oldest logs will
 #  be removed to make space for new ones)
@@ -54,11 +54,11 @@ API_SERVER_NAME_IN_LOG: str = "api-server"  # The name of the server in the log 
 API_VERSION: str = "v1"  # The version of the API
 URL_PREFIX: str = f"/api/{API_VERSION}/"  # The prefix for all API endpoints
 API_SERVER_DEBUG_MODE: bool = True  # Whether the API server is in debug mode or not
-API_SERVER_SSL: bool = False  # Whether the API server uses SSL/TLS or not
-API_SERVER_SSL_CERT: str = (
-    "/path/to/cert.pem"  # The path to the SSL/TLS certificate file
-)
-API_SERVER_SSL_KEY: str = "/path/to/key.pem"  # The path to the SSL/TLS key file
+API_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the API server
+LOGIN_AVAILABLE_THROUGH_API: bool = not (AUTH_SERVER_HOST in {"localhost", "127.0.0.1"})  # Determines if login is allowed through the API server (False if the authentication server is running locally)
+API_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
+API_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
+API_SERVER_SSL: bool = not (API_SERVER_SSL_CERT == "" and API_SERVER_SSL_KEY == "")  # Whether the API server uses SSL/TLS or not
 
 # JWT custom configuration
 JWT_SECRET_KEY: str = "Lorem ipsum dolor sit amet eget."
@@ -89,6 +89,10 @@ CONNECTION_POOL_SIZE: int = 20  # The maximum number of connections in the pool
 
 
 # Miscellaneous settings
+# | Rate limiting settings
+RATE_LIMIT_MAX_REQUESTS: int = 50  # Maximum messages per source
+RATE_LIMIT_TIME_WINDOW: int = 1  # Time window in seconds
+RATE_LIMIT_FILE_NAME: str = "rate_limit.json"  # File name for rate limiting data
 # | HTTP status codes
 STATUS_CODES: Dict[str, int] = {
     "not_found": 404,
@@ -97,6 +101,7 @@ STATUS_CODES: Dict[str, int] = {
     "conflict": 409,
     "precondition_failed": 412,
     "unprocessable_entity": 422,
+    "too_many_requests": 429,
     "bad_request": 400,
     "created": 201,
     "ok": 200,
@@ -105,7 +110,7 @@ STATUS_CODES: Dict[str, int] = {
     "service_unavailable": 503,
 }
 # | Roles and their corresponding IDs
-ROLES: Dict[int, str] = {0: "admin", 1: "user"}
+ROLES: Dict[int, str] = {0: "admin"} # TODO figure out if any more roles are needed
 
 # | Standard not authorized message
 NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {

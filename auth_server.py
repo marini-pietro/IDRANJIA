@@ -12,7 +12,12 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
-from api_blueprints.blueprints_utils import log, fetchone_query, has_valid_json
+from api_blueprints.blueprints_utils import (
+    log,
+    fetchone_query,
+    is_rate_limited,
+    validate_json_request,
+)
 from config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
@@ -23,6 +28,10 @@ from config import (
     STATUS_CODES,
     JWT_REFRESH_TOKEN_EXPIRES,
     JWT_ALGORITHM,
+    AUTH_SERVER_RATE_LIMIT,
+    AUTH_SERVER_SSL,
+    AUTH_SERVER_SSL_CERT,
+    AUTH_SERVER_SSL_KEY,
 )
 
 # Initialize Flask app
@@ -44,13 +53,27 @@ app.config["JWT_ALGORITHM"] = JWT_ALGORITHM
 jwt = JWTManager(app)
 
 
+@app.before_request
+def enforce_rate_limit():
+    """
+    Enforce rate limiting for all incoming requests.
+    """
+    if AUTH_SERVER_RATE_LIMIT:  # Check if rate limiting is enabled
+        client_ip = request.remote_addr
+        if is_rate_limited(client_ip):
+            return (
+                jsonify({"error": "Rate limit exceeded"}),
+                STATUS_CODES["too_many_requests"],
+            )
+
+
 @app.route("/auth/login", methods=["POST"])
 def login():
     """
     Login endpoint to authenticate users and generate JWT tokens.
     """
     # Validate request
-    data: Union[str, Dict[str, Any]] = has_valid_json(request)
+    data: Union[str, Dict[str, Any]] = validate_json_request(request)
     if isinstance(data, str):
         return jsonify({"error": data}), STATUS_CODES["bad_request"]
 
@@ -127,4 +150,16 @@ def health_check():
 
 
 if __name__ == "__main__":
-    app.run(host=AUTH_SERVER_HOST, port=AUTH_SERVER_PORT, debug=AUTH_SERVER_DEBUG_MODE)
+    app.run(host=AUTH_SERVER_HOST, 
+            port=AUTH_SERVER_PORT, 
+            debug=AUTH_SERVER_DEBUG_MODE,
+            ssl_context=(AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
+            )
+    log(
+        log_type="info",
+        message="Authentication server started",
+        origin_name=AUTH_SERVER_NAME_IN_LOG,
+        origin_host=AUTH_SERVER_HOST,
+        message_id="ServerAction",
+        structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+    )

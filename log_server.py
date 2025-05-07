@@ -11,6 +11,7 @@ import re
 import logging
 import time
 import threading
+import json
 from collections import defaultdict, deque
 from threading import Thread, Lock
 from os.path import abspath as os_path_abspath
@@ -21,9 +22,13 @@ from config import (
     LOG_SERVER_PORT,
     LOG_FILE_NAME,
     LOGGER_NAME,
-    RATE_LIMIT_AMOUNT,
-    RATE_LIMIT_AMOUNT_TIME_WINDOW,
+    RATE_LIMIT_MAX_REQUESTS,
+    RATE_LIMIT_TIME_WINDOW,
     DELAYED_LOGS_QUEUE_SIZE,
+    RATE_LIMIT_FILE_NAME,
+    RATE_LIMIT_TIME_WINDOW,
+    RATE_LIMIT_MAX_REQUESTS,
+    LOG_SERVER_RATE_LIMIT,
 )
 
 
@@ -142,35 +147,67 @@ delayed_logs = deque(
 )  # Limit the size of the queue to avoid memory issues
 queue_lock = Lock()  # Lock to ensure thread-safe access to the queue
 
+rate_limit_lock = Lock()  # Lock for thread-safe file access
+
+
+def enforce_rate_limit(source_ip, current_time):
+    """
+    Enforce rate limiting for a given source IP.
+    Returns True if the rate limit is exceeded, otherwise False.
+    """
+    # Load the rate limit data from the shared file
+    try:
+        with rate_limit_lock:
+            with open(RATE_LIMIT_FILE_NAME, "r") as file:
+                rate_limit_data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        rate_limit_data = (
+            {}
+        )  # Return an empty dictionary if the file doesn't exist or is invalid
+
+    # Get the client data or initialize it
+    client_data = rate_limit_data.get(
+        source_ip, {"count": 0, "timestamp": current_time}
+    )
+
+    # Check and reset the count if the time window has passed
+    if current_time - client_data["timestamp"] > RATE_LIMIT_TIME_WINDOW:
+        client_data = {"count": 0, "timestamp": current_time}
+
+    # Increment the request count
+    client_data["count"] += 1
+
+    # Update the rate limit data
+    rate_limit_data[source_ip] = client_data
+
+    # Save the updated rate limit data back to the shared file
+    with rate_limit_lock:
+        with open(RATE_LIMIT_FILE_NAME, "w") as file:
+            json.dump(rate_limit_data, file)
+
+    # Return True if the rate limit is exceeded
+    return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
+
 
 def process_syslog_message(message, addr):
     """
-    Process and log a syslog message according to RFC 5424 with rate limiting.
+    Process and log a syslog message according to RFC 5424 with shared rate limiting.
     """
     source_ip = addr[0]
     current_time = time.time()
 
-    # Check and reset the count if the time window has passed
-    if (
-        current_time - message_counts[source_ip]["timestamp"]
-        > RATE_LIMIT_AMOUNT_TIME_WINDOW
-    ):
-        message_counts[source_ip] = {"count": 0, "timestamp": current_time}
-
-    # Increment the message count for the source
-    message_counts[source_ip]["count"] += 1
-
     # Enforce rate limit
-    if message_counts[source_ip]["count"] > RATE_LIMIT_AMOUNT:
-        # Add the log to the delayed queue instead of dropping it
-        with queue_lock:
-            delayed_logs.append((message, addr))
-        logger.log(
-            "warning",
-            f"Rate limit exceeded for {source_ip}. Delaying message: {message}",
-            f"Syslog-{source_ip}",
-        )
-        return  # Do not process the message immediately
+    if LOG_SERVER_RATE_LIMIT is True:
+        if enforce_rate_limit(source_ip, current_time):
+            # Add the log to the delayed queue instead of dropping it
+            with queue_lock:
+                delayed_logs.append((message, addr))
+            logger.log(
+                "warning",
+                f"Rate limit exceeded for {source_ip}. Delaying message: {message}",
+                f"Syslog-{source_ip}",
+            )
+            return  # Do not process the message immediately
 
     # Process the syslog message as usual
     _process_message(message, addr)
