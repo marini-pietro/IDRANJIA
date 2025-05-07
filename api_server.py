@@ -4,7 +4,6 @@ This server handles incoming requests and routes them to the appropriate bluepri
 It also provides a health check endpoint and a shutdown endpoint.
 """
 
-import re
 from typing import Union, List, Dict, Any
 from os import listdir as os_listdir
 from os.path import join as os_path_join

@@ -5,7 +5,7 @@ from requests import post as requests_post
 from requests.exceptions import RequestException
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
-from blueprints_utils import (
+from .blueprints_utils import (
     check_authorization,
     fetchone_query,
     fetchall_query,

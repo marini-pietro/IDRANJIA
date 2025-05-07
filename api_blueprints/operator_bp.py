@@ -3,7 +3,7 @@ from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
-from blueprints_utils import (
+from .blueprints_utils import (
     check_authorization,
     fetchone_query,
     execute_query,
