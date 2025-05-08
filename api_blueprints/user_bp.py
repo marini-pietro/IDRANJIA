@@ -1,10 +1,26 @@
+import os
+import base64
 from os.path import basename as os_path_basename
+from typing import List, Dict, Any, Union
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from requests import post as requests_post
 from requests.exceptions import RequestException
-from flask_jwt_extended import get_jwt_identity, jwt_required
-from typing import Dict, Union, Any
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from mysql.connector import IntegrityError
+
+from config import (
+    API_SERVER_HOST,
+    API_SERVER_NAME_IN_LOG,
+    AUTH_SERVER_HOST,
+    AUTH_SERVER_PORT,
+    STATUS_CODES,
+    LOGIN_AVAILABLE_THROUGH_API,
+)
+
 from .blueprints_utils import (
     check_authorization,
     fetchone_query,
@@ -14,15 +30,8 @@ from .blueprints_utils import (
     create_response,
     build_update_query_from_filters,
     handle_options_request,
-)
-from config import (
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    API_SERVER_NAME_IN_LOG,
-    STATUS_CODES,
-    AUTH_SERVER_HOST,
-    AUTH_SERVER_PORT,
-    LOGIN_AVAILABLE_THROUGH_API,
+    check_column_existence,
+    get_hateos_location_string,
 )
 
 # Define constants
@@ -31,6 +40,23 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 # Create the blueprint and API
 user_bp = Blueprint(BP_NAME, __name__)
 api = Api(user_bp)
+
+def hash_password(password: str) -> str:
+    # Generate a random salt
+    salt = os.urandom(16)
+    
+    # Use PBKDF2 to hash the password
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    hashed_password = base64.urlsafe_b64encode(kdf.derive(password.encode('utf-8')))
+    
+    # Store the salt and hashed password together
+    return f"{base64.urlsafe_b64encode(salt).decode('utf-8')}:{hashed_password.decode('utf-8')}"
 
 
 class User(Resource):
@@ -63,7 +89,6 @@ class User(Resource):
             status_code=STATUS_CODES["OK"],
             server_name=API_SERVER_NAME_IN_LOG,
             server_host=API_SERVER_HOST,
-            server_port=API_SERVER_PORT,
             structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
 
@@ -104,10 +129,13 @@ class User(Resource):
                 status_code=STATUS_CODES["conflict"],
             )
 
+        # Hash the password
+        hashed_password = hash_password(password)
+
         # Insert the new user into the database
         execute_query(
             query="INSERT INTO utenti (email, password, comune) VALUES (%s, %s, %s)",
-            params=(email, password, comune),
+            params=(email, hashed_password, comune),
         )
 
         # Log the creation
@@ -116,7 +144,6 @@ class User(Resource):
             status_code=STATUS_CODES["created"],
             server_name=API_SERVER_NAME_IN_LOG,
             server_host=API_SERVER_HOST,
-            server_port=API_SERVER_PORT,
             structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
 
@@ -174,7 +201,6 @@ class User(Resource):
             status_code=STATUS_CODES["OK"],
             server_name=API_SERVER_NAME_IN_LOG,
             server_host=API_SERVER_HOST,
-            server_port=API_SERVER_PORT,
             structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
 
@@ -208,7 +234,6 @@ class User(Resource):
             status_code=STATUS_CODES["OK"],
             server_name=API_SERVER_NAME_IN_LOG,
             server_host=API_SERVER_HOST,
-            server_port=API_SERVER_PORT,
             structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
 

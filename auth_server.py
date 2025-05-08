@@ -3,9 +3,12 @@ Authentication server for user login and JWT token generation.
 This server provides endpoints for user authentication, token validation, and health checks.
 """
 
-import re
+import base64
 from typing import Dict, Union, List, Any
 from flask import Flask, request, jsonify
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -53,6 +56,26 @@ app.config["JWT_ALGORITHM"] = JWT_ALGORITHM
 
 jwt = JWTManager(app)
 
+def verify_password(stored_password: str, provided_password: str) -> bool:
+    # Split the stored password into salt and hash
+    salt, hashed_password = stored_password.split(":")
+    salt = base64.urlsafe_b64decode(salt)
+    
+    # Recreate the KDF with the same salt
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    
+    # Verify the provided password
+    try:
+        kdf.verify(provided_password.encode('utf-8'), base64.urlsafe_b64decode(hashed_password))
+        return True
+    except Exception:
+        return False
 
 def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
     """
@@ -105,7 +128,7 @@ def validate_user_data():
                     jsonify("Request body must not be empty"),
                     STATUS_CODES["bad_request"],
                 )
-        except ValueError:
+        except (ValueError, Exception):
             return (jsonify("Invalid JSON format"), STATUS_CODES["bad_request"])
 
         # Validate JSON keys and values for SQL injection
@@ -163,46 +186,50 @@ def login():
     email: str = data.get("email")
     password: str = data.get("password")
 
-    # Query the database to validate the user's credentials
+    # Query the database to retrieve the user's hashed password and role
     user: Dict[str, Any] = fetchone_query(
-        "SELECT email_utente, password, ruolo "
+        "SELECT email, password"
         "FROM utenti "
-        "WHERE email_utente = %s AND password = %s",
-        (email, password),
+        "WHERE email = %s",
+        (email,),
     )
 
     if user:
-        # Use a string for the identity (sub claim)
-        identity = user["email_utente"]  # Use the email as the identity
+        # Verify the provided password against the stored hashed password
+        if verify_password(user["password"], password):
+            # Use a string for the identity (sub claim)
+            identity = user["email"]  # Use the email as the identity
 
-        # Add additional claims (e.g., ruolo) as custom claims
-        additional_claims = {"role": user["ruolo"]}
+            # Add additional claims (e.g., ruolo) as custom claims
+            #additional_claims = {"role": user["ruolo"]}
 
-        # Generate the access token
-        access_token: str = create_access_token(
-            identity=identity, additional_claims=additional_claims
-        )
+            # Generate the access token
+            access_token: str = create_access_token(
+                identity=identity, 
+                #additional_claims=additional_claims
+            )
 
-        # Generate the refresh token
-        refresh_token: str = create_refresh_token(
-            identity=identity, additional_claims=additional_claims
-        )
+            # Generate the refresh token
+            refresh_token: str = create_refresh_token(
+                identity=identity, 
+                #additional_claims=additional_claims
+            )
 
-        # Log the login operation
-        log(
-            log_type="info",
-            message=f"User {email} logged in",
-            origin_name=AUTH_SERVER_NAME_IN_LOG,
-            origin_host=AUTH_SERVER_HOST,
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path}' verb='POST']",
-        )
+            # Log the login operation
+            log(
+                log_type="info",
+                message=f"User {email} logged in",
+                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_host=AUTH_SERVER_HOST,
+                message_id="UserAction",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+            )
 
-        # Return both tokens
-        return (
-            jsonify({"access_token": access_token, "refresh_token": refresh_token}),
-            STATUS_CODES["ok"],
-        )
+            # Return both tokens
+            return (
+                jsonify({"access_token": access_token, "refresh_token": refresh_token}),
+                STATUS_CODES["ok"],
+            )
 
     # Handle invalid credentials
     return jsonify({"error": "Invalid credentials"}), STATUS_CODES["unauthorized"]
