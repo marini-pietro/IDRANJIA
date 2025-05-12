@@ -19,6 +19,8 @@ from config import (
     API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
+from flask_marshmallow import Marshmallow
+from marshmallow import fields, ValidationError
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -26,6 +28,23 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 # Create the blueprint and API
 hydrant_bp = Blueprint(BP_NAME, __name__)
 api = Api(hydrant_bp)
+
+# Initialize Marshmallow
+ma = Marshmallow(hydrant_bp)
+
+# Define schemas
+class HydrantSchema(ma.Schema):
+    stato = fields.String(required=True)
+    latitudine = fields.Float(required=True)
+    longitudine = fields.Float(required=True)
+    comune = fields.String(required=True)
+    via = fields.String(required=True)
+    area_geo = fields.String(required=True)
+    tipo = fields.String(required=True)
+    accessibilità = fields.String(required=True)
+
+
+hydrant_schema = HydrantSchema()
 
 
 class Hydrant(Resource):
@@ -43,7 +62,7 @@ class Hydrant(Resource):
         """
 
         # Validate the id_
-        if not isinstance(id_, int) or id_ <= 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
@@ -66,10 +85,8 @@ class Hydrant(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} fetched hydrant with id_ {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='GET']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the hydrant as a JSON response
@@ -80,67 +97,16 @@ class Hydrant(Resource):
         """
         Create a new hydrant row in the database.
         """
+        try:
+            # Validate and deserialize input
+            data = hydrant_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
 
-        # Gather the data
-        data = request.get_json()
-        stato = data.get("stato")
-        latitudine = data.get("latitudine")
-        longitudine = data.get("longitudine")
-        comune = data.get("comune")
-        via = data.get("via")
-        area_geo = data.get("area_geo")
-        tipo = data.get("tipo")
-        accessibilità = data.get("accessibilità")
         email_ins = get_jwt_identity()
-
-        # Validate the data
-        if not all(
-            [stato, latitudine, longitudine, comune, via, area_geo, tipo, accessibilità]
-        ):
-            return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(stato, str):
-            return create_response(
-                message={"error": "stato must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(latitudine, float):
-            return create_response(
-                message={"error": "latitudine must be float"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(longitudine, float):
-            return create_response(
-                message={"error": "longitudine must be float"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(comune, str):
-            return create_response(
-                message={"error": "comune must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(via, str):
-            return create_response(
-                message={"error": "via must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(area_geo, str):
-            return create_response(
-                message={"error": "area_geo must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(tipo, str):
-            return create_response(
-                message={"error": "tipo must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(accessibilità, str):
-            return create_response(
-                message={"error": "accessibilità must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
 
         # Check if the email exists in the database
         user: Dict[str, Any] = fetchone_query(
@@ -155,7 +121,7 @@ class Hydrant(Resource):
         # Check if the hydrant already exists
         hydrant: Dict[str, Any] = fetchone_query(
             "SELECT area_geo FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s",
-            (stato, latitudine, longitudine),
+            (data["stato"], data["latitudine"], data["longitudine"]),
         )
         if hydrant is not None:
             return create_response(
@@ -172,14 +138,14 @@ class Hydrant(Resource):
             "tipo, accessibilità, email_ins) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
-                stato,
-                latitudine,
-                longitudine,
-                comune,
-                via,
-                area_geo,
-                tipo,
-                accessibilità,
+                data["stato"],
+                data["latitudine"],
+                data["longitudine"],
+                data["comune"],
+                data["via"],
+                data["area_geo"],
+                data["tipo"],
+                data["accessibilità"],
                 email_ins,
             ),
         )
@@ -188,10 +154,8 @@ class Hydrant(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} created hydrant with id_ {lastrowid}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='POST']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response
@@ -208,6 +172,14 @@ class Hydrant(Resource):
         """
         Update a hydrant row in the database by its ID.
         """
+        try:
+            # Validate and deserialize input
+            data = hydrant_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
 
         # Validate the ID
         if id_ <= 0:
@@ -224,76 +196,6 @@ class Hydrant(Resource):
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
-            )
-
-        # Gather the data
-        data = request.get_json()
-        stato = data.get("stato")
-        latitudine = data.get("latitudine")
-        longitudine = data.get("longitudine")
-        comune = data.get("comune")
-        via = data.get("via")
-        area_geo = data.get("area_geo")
-        tipo = data.get("tipo")
-        accessibilità = data.get("accessibilità")
-
-        # Validate the data
-        if any(
-            var is None
-            for var in [
-                stato,
-                latitudine,
-                longitudine,
-                comune,
-                via,
-                area_geo,
-                tipo,
-                accessibilità,
-            ]
-        ):
-            return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if stato is not None and isinstance(stato, str):
-            return create_response(
-                message={"error": "stato must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if latitudine is not None and isinstance(latitudine, float):
-            return create_response(
-                message={"error": "latitudine must be float"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if longitudine is not None and isinstance(longitudine, float):
-            return create_response(
-                message={"error": "longitudine must be float"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if comune is not None and isinstance(comune, str):
-            return create_response(
-                message={"error": "comune must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if via is not None and isinstance(via, str):
-            return create_response(
-                message={"error": "via must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if area_geo is not None and isinstance(area_geo, str):
-            return create_response(
-                message={"error": "area_geo must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if tipo is not None and isinstance(tipo, str):
-            return create_response(
-                message={"error": "tipo must be string"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if accessibilità is not None and isinstance(accessibilità, str):
-            return create_response(
-                message={"error": "accessibilità must be string"},
-                status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the email exists in the database
@@ -319,10 +221,8 @@ class Hydrant(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} updated hydrant with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[0]}' verb='PATCH']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response
@@ -362,10 +262,8 @@ class Hydrant(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} deleted hydrant with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Hydrant.ENDPOINT_PATHS[1]}' verb='DELETE']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response

@@ -4,40 +4,146 @@ These functions include data validation, authorization checks, response creation
 database connection handling, logging, and token validation.
 """
 
-import inspect
-import sys
 import socket
-import queue
-import json
-import time
 from datetime import datetime, timezone
-from os import getpid
-from typing import Dict, List, Tuple, Any, Union
 from functools import wraps
-from contextlib import contextmanager
-from flask import jsonify, make_response, Response
-from flask_jwt_extended import get_jwt
-from mysql.connector.pooling import MySQLConnectionPool
+from inspect import isclass as inspect_isclass, signature as inspect_signature
+from os import getpid
+from queue import Queue
+from sys import exit as sys_exit
 from threading import Lock, Thread
+from typing import Any, Dict, List, Tuple, Union
+
+from contextlib import contextmanager
+from cachetools import TTLCache
+from flask import Response, jsonify, make_response, request
+from mysql.connector.pooling import MySQLConnectionPool
+from requests import post as requests_post
+from requests.exceptions import Timeout
+from requests.exceptions import RequestException
+
 from config import (
-    DB_HOST,
-    DB_USER,
-    DB_PASSWORD,
-    DB_NAME,
+    API_SERVER_HOST,
+    API_SERVER_NAME_IN_LOG,
+    API_SERVER_PORT,
+    API_SERVER_SSL,
+    AUTH_SERVER_HOST,
+    AUTH_SERVER_PORT,
+    AUTH_SERVER_SSL,
     CONNECTION_POOL_SIZE,
+    DB_HOST,
+    DB_NAME,
+    DB_PASSWORD,
+    DB_USER,
+    JWT_JSON_KEY,
+    JWT_QUERY_STRING_NAME,
+    JWT_VALIDATION_CACHE_SIZE,
+    JWT_VALIDATION_CACHE_TTL,
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
-    STATUS_CODES,
-    ROLES,
-    SYSLOG_SEVERITY_MAP,
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    URL_PREFIX,
-    API_SERVER_SSL,
-    RATE_LIMIT_FILE_NAME,
+    NOT_AUTHORIZED_MESSAGE,
+    RATE_LIMIT_CACHE_SIZE,
+    RATE_LIMIT_CACHE_TTL,
     RATE_LIMIT_MAX_REQUESTS,
-    RATE_LIMIT_TIME_WINDOW,
+    ROLES,
+    STATUS_CODES,
+    SYSLOG_SEVERITY_MAP,
+    URL_PREFIX,
 )
+
+# Authentication related
+# Cache for token validation results
+token_validation_cache = TTLCache(
+    maxsize=JWT_VALIDATION_CACHE_SIZE, ttl=JWT_VALIDATION_CACHE_TTL
+)
+
+
+def jwt_validation_required(func):
+    """
+    Decorator to validate the JWT token before executing the endpoint function.
+
+    If the token is invalid, it returns a 401 Unauthorized response.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Extract the token from the Authorization header
+        auth_header = request.headers.get("Authorization", None)
+        token = auth_header.replace("Bearer ", "")
+
+        # If the token is not in the Authorization header, check the query string
+        if token is None:
+            token = request.args.get(JWT_QUERY_STRING_NAME, "")
+
+        # If the token is not in the query string, check the JSON body
+        if token is None:
+            json_body = request.get_json(silent=True)  # Safely get JSON body
+            if json_body:  # Ensure it's not None
+                token = json_body.get(JWT_JSON_KEY, None)
+
+        # Validate the token
+        if token is None:
+            return {"error": "missing token"}, STATUS_CODES["unauthorized"]
+
+        # Initialize identity and role
+        identity = None
+        role = None
+
+        # Check if the token is already validated in the cache
+        if token in token_validation_cache:
+            identity, role = token_validation_cache[token]
+        else:
+            # Contact the authentication microservice to validate the token
+            try:
+                # Send a request to the authentication server to validate the token
+                # Proper json body and headers are not needed
+                response: Response = requests_post(
+                    f"{"https" if AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/validate",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=5, # in seconds
+                )
+
+
+
+                # If the token is invalid, return a 401 Unauthorized response
+                if response.status_code != STATUS_CODES["ok"]:
+                    return {"error": "Invalid token"}, STATUS_CODES["unauthorized"]
+                else:
+                # Extract the identity from the response JSON if valid
+                    response_json = response.json()
+                    identity = response_json.get("identity")
+                    role = response_json.get("role")
+
+                # Cache the result if the token is valid
+                token_validation_cache[token] = identity, role
+
+            except Timeout:
+                log(
+                    log_type="error",
+                    message="Request timed out while validating token",
+                    origin_name="JWTValidation",
+                    origin_host=API_SERVER_HOST,
+                )
+                return {"error": "Login request timed out"}, STATUS_CODES["gateway_timeout"]
+
+            except RequestException as ex:
+                log(
+                    log_type="error",
+                    message=f"Error validating token: {ex}",
+                    origin_name="JWTValidation",
+                    origin_host=API_SERVER_HOST,
+                )
+                return {"error": "internal server error while validating token"}, STATUS_CODES["internal_error"]
+
+        # Pass the extracted identity to the wrapped function
+        # Only if the function accepts it (OPTIONS endpoint do not use it)
+        if "identity" in inspect_signature(func).parameters:
+            kwargs["identity"] = identity
+
+        kwargs["role"] = role  # Add role to kwargs for the next wrapper
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 # Authorization related
@@ -52,23 +158,28 @@ def check_authorization(allowed_roles: List[str]):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Extract the role from the additional claims
-            claims = get_jwt()
-            user_role = claims.get("role")
+            # Extract the role from kwargs (passed by jwt_validation_required)
+            user_role = kwargs.pop("role", None)  # Remove 'role' after retrieving it
 
-            # Check if the user role is present in the token
-            # If not, return an error response
+            # Check if the user role is present
             if user_role is None:
                 return create_response(
-                    {"error": "user role not present in token"},
-                    STATUS_CODES["bad_request"],
+                    message={"error": "user role not present in token"},
+                    status_code=STATUS_CODES["bad_request"],
+                )
+
+            # Check if the user role is valid
+            if user_role not in ROLES:
+                return create_response(
+                    message={"error": "invalid user role"},
+                    status_code=STATUS_CODES["bad_request"],
                 )
 
             # Check if the user's role is allowed
-            if ROLES.get(user_role) not in allowed_roles:
+            if user_role not in allowed_roles:
                 return create_response(
-                    {"outcome": "not permitted"},
-                    STATUS_CODES["forbidden"],
+                    message=NOT_AUTHORIZED_MESSAGE,
+                    status_code=STATUS_CODES["forbidden"],
                 )
 
             return func(*args, **kwargs)
@@ -126,7 +237,7 @@ def handle_options_request(resource_class) -> Response:
     """
 
     # Ensure the input is a class
-    if not inspect.isclass(resource_class):
+    if not inspect_isclass(resource_class):
         raise TypeError(
             f"resource_class must be a class, not an instance. Got {resource_class} instead."
         )
@@ -160,79 +271,29 @@ def handle_options_request(resource_class) -> Response:
     return response
 
 
+# Replace file-based rate-limiting with TTLCache
+rate_limit_cache = TTLCache(
+    maxsize=RATE_LIMIT_CACHE_SIZE, ttl=RATE_LIMIT_CACHE_TTL
+)  # Cache with a TTL equal to the time window
 rate_limit_lock = Lock()  # Lock for thread-safe file access
 
 
 def is_rate_limited(client_ip: str) -> bool:
     """
-    Check if the client IP is rate-limited.
+    Check if the client IP is rate-limited using an in-memory TTLCache.
     """
     with rate_limit_lock:
-        try:
-            # Load the rate limit data
-            with open(RATE_LIMIT_FILE_NAME, "r") as file:
-                rate_limit_data = json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError):
-            rate_limit_data = {}
-
-        current_time = time.time()
-        client_data = rate_limit_data.get(
-            client_ip, {"count": 0, "timestamp": current_time}
-        )
-
-        # Reset the count if the time window has passed
-        if current_time - client_data["timestamp"] > RATE_LIMIT_TIME_WINDOW:
-            client_data = {"count": 0, "timestamp": current_time}
+        # Retrieve or initialize client data
+        client_data = rate_limit_cache.get(client_ip, {"count": 0})
 
         # Increment the request count
         client_data["count"] += 1
 
-        # Update the rate limit data
-        rate_limit_data[client_ip] = client_data
-
-        # Save the updated data back to the file
-        with open(RATE_LIMIT_FILE_NAME, "w") as file:
-            json.dump(rate_limit_data, file)
+        # Update the cache with the new client data
+        rate_limit_cache[client_ip] = client_data
 
         # Check if the rate limit is exceeded
         return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
-
-
-# Data handling related
-def parse_time_string(time_string: str) -> datetime:
-    """
-    Parse a time string in the format HH:MM and return a datetime object.
-
-    params:
-        time_string - The time string to parse
-
-    returns:
-        A datetime object if the string is in the correct format, None otherwise
-
-    """
-
-    try:
-        return datetime.strptime(time_string, "%H:%M").time()
-    except ValueError:
-        return None
-
-
-def parse_date_string(date_string: str) -> datetime:
-    """
-    Parse a date string in the format YYYY-MM-DD and return a datetime object.
-
-    params:
-        date_string - The date string to parse
-
-    returns:
-        A datetime object if the string is in the correct format, None otherwise
-
-    """
-
-    try:
-        return datetime.strptime(date_string, "%Y-%m-%d").date()
-    except ValueError:
-        return None
 
 
 # Database related
@@ -254,7 +315,8 @@ def get_db_pool():
             _DB_POOL = MySQLConnectionPool(
                 pool_name="pctowa_connection_pool",
                 pool_size=max(1, CONNECTION_POOL_SIZE),
-                pool_reset_session=False,  # Session reset not needed for this application (no transactions)
+                # Session reset not needed for this application (no transactions)
+                pool_reset_session=False,
                 host=DB_HOST,
                 user=DB_USER,
                 password=DB_PASSWORD,
@@ -264,9 +326,10 @@ def get_db_pool():
             print(
                 f"Couldn't access database, see next line for full exception.\n{ex}\n"
                 f"host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}\n"
-                f"Make sure to shutdown all microservices with the provided kill_quick script, change the configuration and try again.\n"
+                f"Make sure to shutdown all microservices with the provided kill_quick script, "
+                f"change the configuration and try again.\n"
             )
-            sys.exit(1)
+            sys_exit(1)
     return _DB_POOL
 
 
@@ -340,7 +403,8 @@ def check_column_existence(
         to_modify - The list of columns to modify
 
     Returns:
-        Response or bool - An error response if there are invalid columns, or True if all columns are valid
+        Response or bool - An error response if there are invalid columns,
+                           or True if all columns are valid
     """
 
     error_columns = [field for field in to_modify if field not in modifiable_columns]
@@ -354,7 +418,7 @@ def check_column_existence(
 
 
 # Database query related
-def fetchone_query(query: str, params: Tuple[Any]) -> Dict[str, Any]:
+def fetchone_query(query: str, params: Tuple[Any]) -> Union[Dict[str, Any], None]:
     """
     Execute a query on the database and return the result.
 
@@ -366,13 +430,14 @@ def fetchone_query(query: str, params: Tuple[Any]) -> Dict[str, Any]:
         The result of the query
     """
 
-    with get_db_connection() as connection:  # Use a context manager to ensure the connection is closed after use
+    # Use a context manager to ensure the connection is closed after use
+    with get_db_connection() as connection:
         with connection.cursor(dictionary=True) as cursor:
             cursor.execute(query, params)
             return cursor.fetchone()
 
 
-def fetchall_query(query: str, params: Tuple[Any]) -> List[Dict[str, Any]]:
+def fetchall_query(query: str, params: Tuple[Any]) -> Union[List[Dict[str, Any]], None]:
     """
     Execute a query on the database and return the result.
     """
@@ -405,7 +470,7 @@ def execute_query(query: str, params: Tuple[Any]) -> Tuple[int, int]:
 
 # Log server related
 # Create a queue for log messages
-log_queue = queue.Queue()
+log_queue = Queue()
 
 
 def log_worker():
@@ -428,8 +493,9 @@ def log_worker():
         # Format the syslog message with the correct priority
         priority = (1 * 8) + severity  # Assuming facility=1 (user-level messages)
         syslog_message = (
-            f"<{priority}>1 "
-            f"{datetime.now(timezone.utc).isoformat()} "  # Timestamp in ISO 8601 format with timezone
+            f"<{priority}>1 "  #  # Priority
+            # Timestamp in ISO 8601 format with timezone
+            f"{datetime.now(timezone.utc).isoformat()} "
             f"{origin_host} "  # Hostname
             f"{origin_name} "  # App name
             f"{getpid()} "  # Process ID
@@ -454,10 +520,10 @@ log_thread.start()
 
 
 def log(
-    log_type: str,
     message: str,
-    origin_name: str,
-    origin_host: str,
+    log_type: str,
+    origin_name: str = API_SERVER_NAME_IN_LOG,
+    origin_host: str = API_SERVER_HOST,
     message_id: str = "UserAction",
     structured_data: Union[str, Dict[str, Any]] = "- -",
 ) -> None:
@@ -483,4 +549,3 @@ def shutdown_logging():
     Signal the log thread to exit and wait for it to finish.
     """
     log_queue.put(None)  # Send exit signal
-    log_thread.join()  # Wait for the thread to finish (even if it is a daemon thread so no logs are lost)

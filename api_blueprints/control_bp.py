@@ -3,6 +3,8 @@ from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
+from flask_marshmallow import Marshmallow
+from marshmallow import fields, ValidationError
 from .blueprints_utils import (
     check_authorization,
     fetchone_query,
@@ -10,10 +12,8 @@ from .blueprints_utils import (
     log,
     create_response,
     build_update_query_from_filters,
-    parse_date_string,
     get_hateos_location_string,
     handle_options_request,
-    parse_date_string,
 )
 from config import (
     API_SERVER_HOST,
@@ -29,6 +29,17 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 control_bp = Blueprint(BP_NAME, __name__)
 api = Api(control_bp)
 
+# Initialize Marshmallow
+ma = Marshmallow()
+
+# Define schemas
+class ControlSchema(ma.Schema):
+    tipo = fields.String(required=True)
+    esito = fields.Boolean(required=True)
+    data = fields.Date(required=True)
+    id_idrante = fields.Integer(required=True)
+
+control_schema = ControlSchema()
 
 class Control(Resource):
 
@@ -65,10 +76,8 @@ class Control(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} fetched control with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[0]}' verb='GET']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the control as a JSON response
@@ -80,50 +89,19 @@ class Control(Resource):
         Create a new row in control table.
         The data is passed as a JSON body.
         """
-
-        # Gather the data
-        data = request.get_json()
-        tipo: str = data.get("tipo")
-        esito: bool = data.get("esito")
-        data = parse_date_string(data.get("data"))
-        id_idrante: int = data.get("id_idrante")
-
-        # Validate the data
-        if not all([tipo, esito, data, id_idrante]):
+        try:
+            # Validate and deserialize input
+            data = control_schema.load(request.get_json())
+        except ValidationError as err:
             return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(esito, bool):
-            return create_response(
-                message={"error": "esito must be boolean value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(tipo, str):
-            return create_response(
-                message={"error": "tipo must be string value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(data, str):
-            return create_response(
-                message={"error": "data must be string value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not (
-            (isinstance(id_idrante, int) and id_idrante >= 0)
-            or (isinstance(id_idrante, str) and id_idrante.isdigit())
-        ):
-            return create_response(
-                message={
-                    "error": "id_idrante must be a positive integer or a numeric string"
-                },
+                message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Perform casting if needed
-        if isinstance(id_idrante, str):
-            id_idrante = int(id_idrante)
-        data = parse_date_string(data)
+        tipo = data["tipo"]
+        esito = data["esito"]
+        data_esecuzione = data["data"]
+        id_idrante = data["id_idrante"]
 
         # Check that the id_idrante exists in the database
         hydrant: Dict[str, Any] = fetchone_query(
@@ -139,17 +117,15 @@ class Control(Resource):
         lastrowid = execute_query(
             query="INSERT INTO controlli (tipo, esito, data, id_idrante) "
             "VALUES (%s, %s, %s, %s)",
-            params=(tipo, esito, data, id_idrante),
+            params=(tipo, esito, data_esecuzione, id_idrante),
         )
 
         # Log the action
         log(
             type="info",
             message=f"User {get_jwt_identity()} created control with id_ {lastrowid}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[0]}' verb='POST']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response
@@ -168,14 +144,15 @@ class Control(Resource):
         ID is passed as a path variable integer.
         The data is passed as a JSON body.
         """
-
-        # Validate the ID
-        if not isinstance(id_, int) or id_ < 0:
+        try:
+            # Validate and deserialize input
+            data = control_schema.load(request.get_json())
+        except ValidationError as err:
             return create_response(
-                message={"error": "id must be a positive integer"},
-                status_code=STATUS_CODES["BAD_REQUEST"],
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
             )
-
+        
         # Check that the control exists in the database
         control: Dict[str, Any] = fetchone_query(
             query="SELECT tipo FROM controlli WHERE id_controllo = %s", params=(id_,)
@@ -187,47 +164,10 @@ class Control(Resource):
             )
 
         # Gather the data
-        data = request.get_json()
         tipo: str = data.get("tipo")
         esito: bool = data.get("esito")
-        data = parse_date_string(data.get("data"))
+        data_esecuzione = data.get("data")
         id_idrante: int = data.get("id_idrante")
-
-        # Validate the data
-        if any(var is None for var in [tipo, esito, data, id_idrante]):
-            return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if tipo is not None and isinstance(tipo, str):
-            return create_response(
-                message={"error": "tipo must be string value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if esito is not None and isinstance(esito, bool):
-            return create_response(
-                message={"error": "esito must be boolean value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if data is not None and isinstance(data, str):
-            return create_response(
-                message={"error": "data must be string value"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if id_idrante is not None and (
-            (isinstance(id_idrante, int) and id_idrante >= 0)
-            or (isinstance(id_idrante, str) and id_idrante.isdigit())
-        ):
-            return create_response(
-                message={
-                    "error": "id_idrante must be a positive integer or a numeric string"
-                },
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Perform casting if needed
-        if isinstance(id_idrante, str):
-            id_idrante = int(id_idrante)
 
         # Check that the id_idrante exists in the database
         hydrant: Dict[str, Any] = fetchone_query(
@@ -238,10 +178,6 @@ class Control(Resource):
                 message={"error": "specified hydrant does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
-
-        # Perform casting if needed
-        if isinstance(id_idrante, str):
-            id_idrante = int(id_idrante)
 
         # Build the query
         query, params = build_update_query_from_filters(
@@ -255,10 +191,8 @@ class Control(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} updated control with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[0]}' verb='PATCH']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response
@@ -300,10 +234,8 @@ class Control(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} deleted control with id_ {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Control.ENDPOINT_PATHS[1]}' verb='DELETE']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response

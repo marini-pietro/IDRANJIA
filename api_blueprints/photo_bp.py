@@ -2,7 +2,9 @@ from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import get_jwt_identity, jwt_required
-from typing import Dict, Union, Any
+from flask_marshmallow import Marshmallow
+from marshmallow import fields, ValidationError
+from typing import Dict, Union, List, Any
 from .blueprints_utils import (
     check_authorization,
     fetchone_query,
@@ -13,7 +15,6 @@ from .blueprints_utils import (
     handle_options_request,
     build_update_query_from_filters,
     get_hateos_location_string,
-    parse_date_string,
 )
 from config import (
     API_SERVER_HOST,
@@ -22,12 +23,24 @@ from config import (
     STATUS_CODES,
 )
 
+# Initialize Marshmallow
+ma = Marshmallow()
+
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 
 # Create the blueprint and API
 photo_bp = Blueprint(BP_NAME, __name__)
 api = Api(photo_bp)
+
+
+# Marshmallow Schemas
+class PhotoSchema(ma.Schema):
+    id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
+    posizione = fields.String(required=True)
+    data = fields.String(required=True)
+
+photo_schema = PhotoSchema()
 
 
 class Photo(Resource):
@@ -41,7 +54,7 @@ class Photo(Resource):
         """
 
         # Validate the hydrant_id
-        if not isinstance(hydrant_id, int) or hydrant_id < 0:
+        if hydrant_id < 0:
             return create_response(
                 message={"error": "hydrant id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
@@ -58,7 +71,7 @@ class Photo(Resource):
             )
 
         # Get the data
-        photos = fetchall_query(
+        photos: List[Dict[str, Any]] = fetchall_query(
             query="SELECT posizione, data FROM photos WHERE id_idrante = %s",
             params=(hydrant_id,),
         )
@@ -74,10 +87,8 @@ class Photo(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} fetched photos with hydrant id_ {hydrant_id}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Photo.ENDPOINT_PATHS[0]}' verb='GET']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the photos as a JSON response
@@ -89,58 +100,31 @@ class Photo(Resource):
         Create a new photo row in the database.
         """
 
-        # Gather data
-        data = request.get_json()
-        hydrant_id = data.get("id_idrante")
-        position = data.get("posizione")
-        date = data.get("data")
-
-        # Validate the data
-        if not all([hydrant_id, position, date]):
+        # Validate and deserialize input data
+        try:
+            data = photo_schema.load(request.get_json())
+        except ValidationError as err:
             return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not (
-            isinstance(hydrant_id, int)
-            and hydrant_id >= 0
-            or isinstance(hydrant_id, str)
-            and hydrant_id.isdigit()
-        ):
-            return create_response(
-                message={
-                    "error": "hydrant id must be positive integer or numeric string"
-                },
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(position, str):
-            return create_response(
-                message={"error": "position must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(date, str):
-            return create_response(
-                message={"error": "date must be string value."},
+                message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Perform casting operations if needed
-        if isinstance(hydrant_id, str):
-            hydrant_id = int(hydrant_id)
-        date = parse_date_string(date)
+        hydrant_id = data["id_idrante"]
+        position = data["posizione"]
+        date = data["data"]
 
         # Check that hydrant exists
-        hydrant = fetchone_query(
+        hydrant: Dict[str, Any] = fetchone_query(
             "SELECT id_ FROM hydrants WHERE id_ = %s", (hydrant_id,)
         )
-        if not hydrant:
+        if hydrant is None:
             return create_response(
                 message={"error": "hydrant not found"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Check if the photo already exists
-        existing_photo = fetchone_query(
+        existing_photo: Dict[str, Any] = fetchone_query(
             "SELECT * FROM photos WHERE id_idrante = %s AND posizione = %s AND data = %s",
             (hydrant_id, position, date),
         )
@@ -160,17 +144,15 @@ class Photo(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} created photo with hydrant id_ {hydrant_id}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[{Photo.ENDPOINT_PATHS[0]} Verb POST]",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response
         return create_response(
             message={
                 "outcome": "photo successfully created",
-                "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Photo.ENDPOINT_PATHS[0]}/{lastrowid}",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -191,116 +173,36 @@ class Photo(Resource):
         # Check that the photo exists
         photo = fetchone_query(
             query="SELECT data FROM photos WHERE id_foto = %s",
-            params=(
-                id_,
-            ),  # Only fecth to check for existence (select column could be any)
+            params=(id_,),
         )
         if photo is None:
             return create_response(
-                message={"error": "photo with specfied id not found"},
+                message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Gather data
-        data = request.get_json()
-        position = data.get("posizione")
-        data = data.get("data")
-        id_idrante = data.get("id_idrante")
-
-        # Validate the data
-        if any(var is None for var in [position, data]):
+        # Validate and deserialize input data
+        try:
+            data = photo_schema.load(request.get_json())
+        except ValidationError as err:
             return create_response(
-                message={"error": "missing required fields."},
+                message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
-        if position is not None and isinstance(position, str):
-            return create_response(
-                message={"error": "position must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not any(
-            position.endswith(ext)
-            for ext in [
-                ".jpg",
-                ".jpeg",
-                ".png",
-                ".gif",
-                ".webp",
-                ".bmp",
-                ".svg",
-                ".ico",
-                ".tiff",
-            ]
-        ):
-            return create_response(
-                message={
-                    "error": "position must be a file name with a valid image extension."
-                },
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if data is not None and isinstance(data, str):
-            return create_response(
-                message={"error": "date must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if id_idrante is not None and (
-            isinstance(id_idrante, int)
-            and id_idrante >= 0
-            or isinstance(id_idrante, str)
-            and id_idrante.isdigit()
-        ):
-            return create_response(
-                message={
-                    "error": "hydrant id must be positive integer or numeric string"
-                },
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Perform casting operations if needed
-        if isinstance(data, str):
-            data = parse_date_string(data)
-        if isinstance(id_idrante, str):
-            id_idrante = int(id_idrante)
-
-        # Check that hydrant exists
-        hydrant = fetchone_query(
-            "SELECT stato FROM idranti WHERE id = %s", (id_idrante,)
-        )
-
-        if hydrant is None:
-            return create_response(
-                message={"error": "hydrant not found"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Check that specified location is not already taken
-        photo = fetchone_query(
-            "SELECT data FROM foto WHERE posizione = %s",
-            (position,),
-        )
-        if photo is None:
-            return create_response(
-                message={"error": "photo with specified position already exists"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Log the action
-        log(
-            type="info",
-            message=f"User {get_jwt_identity()} updated photo with id_ {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Photo.ENDPOINT_PATHS[0]}' verb='PATCH']",
-        )
 
         # Update the photo in the database
         query, params = build_update_query_from_filters(
             data=data, table_name="photos", pk_column="id_foto", pk_value=id_
         )
-
-        # Execute the update query
         execute_query(query, params)
+
+        # Log the action
+        log(
+            type="info",
+            message=f"User {get_jwt_identity()} updated photo with id_ {id_}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
 
         # Return the response
         return create_response(
@@ -332,7 +234,7 @@ class Photo(Resource):
         # Check if any rows were affected
         if rows_affected == 0:
             return create_response(
-                message={"error": "photo with specfied id not found"},
+                message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
             )
 
@@ -340,10 +242,8 @@ class Photo(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} deleted photo with id_ {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response

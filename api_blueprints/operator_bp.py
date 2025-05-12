@@ -3,6 +3,9 @@ from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from typing import Dict, Union, Any
+from flask_marshmallow import Marshmallow
+from marshmallow import fields, ValidationError
+import re
 from .blueprints_utils import (
     check_authorization,
     fetchone_query,
@@ -27,6 +30,17 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 operator_bp = Blueprint(BP_NAME, __name__)
 api = Api(operator_bp)
 
+# Initialize Marshmallow
+ma = Marshmallow()
+
+# Define schemas
+class OperatorSchema(ma.Schema):
+    CF = fields.String(required=True)
+    nome = fields.String(required=True)
+    cognome = fields.String(required=True)
+
+operator_schema = OperatorSchema()
+
 
 class Operator(Resource):
 
@@ -39,14 +53,14 @@ class Operator(Resource):
         """
 
         # Validate the id_
-        if not isinstance(id_, int) or id_ < 0:
+        if id_ < 0:
             return create_response(
                 message={"error": "id must be a positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Get the data
-        operator = fetchone_query(
+        operator: Dict[str, Any] = fetchone_query(
             "SELECT CF, nome, cognome FROM operatori WHERE id = %s", (id_,)
         )
 
@@ -61,10 +75,8 @@ class Operator(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} fetched operator with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='GET']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the operator as a JSON response
@@ -75,37 +87,21 @@ class Operator(Resource):
         """
         Create a new operator row in the database.
         """
+        try:
+            # Validate and deserialize input
+            data = operator_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
 
-        # Gather the data
-        data = request.get_json()
-        cf = data.get("CF")
-        name = data.get("nome")
-        surname = data.get("cognome")
-
-        # Validate the data
-        if not all([cf, name, surname]):
-            return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(cf, str):  # TODO add regex check for CF
-            return create_response(
-                message={"error": "cf must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(name, str):
-            return create_response(
-                message={"error": "name must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if not isinstance(surname, str):
-            return create_response(
-                message={"error": "surname must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
+        cf = data["CF"]
+        name = data["nome"]
+        surname = data["cognome"]
 
         # Check if the operator already exists
-        operator = fetchone_query(
+        operator: Dict[str, Any] = fetchone_query(
             query="SELECT nome FROM operatori WHERE CF = %s", params=(cf,)
         )  # Column in SELECT is not important, we just need to check if the row exists
         if operator is not None:
@@ -124,10 +120,8 @@ class Operator(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} created operator with id {lastrowid}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='POST']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the new operator as a JSON response
@@ -144,6 +138,18 @@ class Operator(Resource):
         """
         Update an operator in the database by its ID.
         """
+        try:
+            # Validate and deserialize input
+            data = operator_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        cf = data.get("CF")
+        nome = data.get("nome")
+        cognome = data.get("cognome")
 
         # Validate the id
         if id_ < 0:
@@ -162,42 +168,12 @@ class Operator(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Gather the data
-        data = request.get_json()
-        cf = data.get("CF")
-        nome = data.get("nome")
-        cognome = data.get("cognome")
-
-        # Validate the data
-        if any(var is None for var in [cf, nome, cognome]):
-            return create_response(
-                message={"error": "missing required fields."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if cf is not None and isinstance(cf, str):  # TODO add regex check for CF
-            return create_response(
-                message={"error": "cf must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if nome is not None and isinstance(nome, str):
-            return create_response(
-                message={"error": "name must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-        if cognome is not None and isinstance(cognome, str):
-            return create_response(
-                message={"error": "surname must be string value."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
         # Log the action
         log(
             type="info",
             message=f"User {get_jwt_identity()} updated operator with id {id_}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[0]}' verb='PATCH']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Build the update query
@@ -227,10 +203,10 @@ class Operator(Resource):
         """
 
         # Validate the CF
-        if not isinstance(CF, str):  # TODO add regex check for CF
+        if not isinstance(CF, str) or not re.match(r"^[A-Z0-9]{16}$", CF):
             return create_response(
-                message={"error": "CF must be a string value."},
-                status_code=STATUS_CODES["bad_request"],
+            message={"error": "CF must be a 16-character alphanumeric string."},
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Execute the query
@@ -249,10 +225,8 @@ class Operator(Resource):
         log(
             type="info",
             message=f"User {get_jwt_identity()} deleted opearator with cf {CF}",
-            origin_name=API_SERVER_NAME_IN_LOG,
-            origin_host=API_SERVER_HOST,
-            origin_port=API_SERVER_PORT,
-            structured_data=f"[endpoint='{Operator.ENDPOINT_PATHS[1]}' verb='DELETE']",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the response

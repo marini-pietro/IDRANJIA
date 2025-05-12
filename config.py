@@ -8,8 +8,8 @@ This module contains the configuration settings for the API server, including:
 - Authorization settings
 """
 
-import re
-from typing import Dict
+from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
+from typing import Dict, Set
 from datetime import timedelta
 
 # Authentication server related settings
@@ -25,6 +25,10 @@ AUTH_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
 AUTH_SERVER_SSL: bool = not (
     AUTH_SERVER_SSL_CERT == "" and AUTH_SERVER_SSL_KEY == ""
 )  # Whether the authentication server uses SSL/TLS or not
+JWT_VALIDATION_CACHE_SIZE: int = 1000  # The size of the cache for token validation
+JWT_VALIDATION_CACHE_TTL: int = (
+    3600  # The time-to-live for the token validation cache (seconds)
+)
 
 # Log server related settings
 LOG_SERVER_HOST: str = "localhost"  # The host of the log server
@@ -58,9 +62,10 @@ API_VERSION: str = "v1"  # The version of the API
 URL_PREFIX: str = f"/api/{API_VERSION}/"  # The prefix for all API endpoints
 API_SERVER_DEBUG_MODE: bool = True  # Whether the API server is in debug mode or not
 API_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the API server
-LOGIN_AVAILABLE_THROUGH_API: bool = not (
-    AUTH_SERVER_HOST in {"localhost", "127.0.0.1"}
-)  # Determines if login is allowed through the API server (False if the authentication server is running locally)
+LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
+    "localhost",
+    "127.0.0.1",
+}  # Determines if login is allowed through the API server (True if the authentication server is running locally)
 API_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
 API_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
 API_SERVER_SSL: bool = not (
@@ -71,17 +76,12 @@ API_SERVER_SSL: bool = not (
 JWT_SECRET_KEY: str = "Lorem ipsum dolor sit amet eget."
 JWT_ALGORITHM: str = "HS256"  # The algorithm used to sign the JWT token
 JWT_QUERY_STRING_NAME = "jwt_token"  # Custom name for the query string parameter
-JWT_ACCESS_COOKIE_NAME = "jwt_access_cookie"  # Custom name for the access token cookie
-JWT_REFRESH_COOKIE_NAME = (
-    "jwt_refresh_cookie"  # Custom name for the refresh token cookie
-)
 JWT_JSON_KEY = "jwt_token"  # Custom key for the access token in JSON payloads
 JWT_REFRESH_JSON_KEY = (
     "jwt_refresh_token"  # Custom key for the refresh token in JSON payloads
 )
 JWT_TOKEN_LOCATION = [
     "headers",
-    "cookies",
     "query_string",
     "json",
 ]  # Where to look for the JWT token
@@ -98,8 +98,8 @@ CONNECTION_POOL_SIZE: int = 20  # The maximum number of connections in the pool
 # Miscellaneous settings
 # | Rate limiting settings
 RATE_LIMIT_MAX_REQUESTS: int = 50  # Maximum messages per source
-RATE_LIMIT_TIME_WINDOW: int = 1  # Time window in seconds
-RATE_LIMIT_FILE_NAME: str = "rate_limit.json"  # File name for rate limiting data
+RATE_LIMIT_CACHE_SIZE: int = 1000  # The size of the cache for rate limiting
+RATE_LIMIT_CACHE_TTL: int = 10  # Time window in seconds
 # | HTTP status codes
 STATUS_CODES: Dict[str, int] = {
     "not_found": 404,
@@ -109,6 +109,7 @@ STATUS_CODES: Dict[str, int] = {
     "precondition_failed": 412,
     "unprocessable_entity": 422,
     "too_many_requests": 429,
+    "gateway_timeout": 504,
     "bad_request": 400,
     "created": 201,
     "ok": 200,
@@ -117,7 +118,7 @@ STATUS_CODES: Dict[str, int] = {
     "service_unavailable": 503,
 }
 # | Roles and their corresponding IDs
-ROLES: Dict[int, str] = {0: "admin"}  # TODO figure out if any more roles are needed
+ROLES: Set[str] = {"admin", "tutor", "supertutor", "teacher"}
 
 # | Standard not authorized message
 NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {
@@ -128,7 +129,7 @@ NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {
 # This regex pattern is used to detect SQL injection attempts in user input.
 # It matches common SQL keywords and commands that are often used in SQL injection attacks.
 # Precompile the regex pattern once
-SQL_PATTERN = re.compile(
+SQL_PATTERN = re_compile(
     r"\b("
     + "|".join(
         [
@@ -184,5 +185,5 @@ SQL_PATTERN = re.compile(
     )
     + r")\b"
     + r"|(--|#|;)",  # Match special characters without word boundaries
-    re.IGNORECASE,
+    RE_IGNORECASE,
 )

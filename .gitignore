@@ -1,11 +1,16 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-api_blueprints/__pycache__/
 *.py[cod]
 *$py.class
 
 # C extensions
 *.so
+
+# Log files
+*_log.txt
+
+# VS Code
+.vscode/
 
 # Distribution / packaging
 .Python
