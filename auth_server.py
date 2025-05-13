@@ -205,7 +205,8 @@ def login():
                 message=f"User {email} logged in",
                 origin_name=AUTH_SERVER_NAME_IN_LOG,
                 origin_host=AUTH_SERVER_HOST,
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                message_id="UserAction",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
 
             # Return both tokens

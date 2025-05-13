@@ -35,8 +35,8 @@ LOG_SERVER_HOST: str = "localhost"  # The host of the log server
 LOG_SERVER_PORT: int = (
     6014  # The port of the log server (default syslog port, can modified to open port for testing)
 )
-LOG_FILE_NAME: str = "idranjia_log.txt"
-LOGGER_NAME: str = "idranjia_logger"  # The name of the logger
+LOG_FILE_NAME: str = "pctowa_log.txt"
+LOGGER_NAME: str = "pctowa_logger"  # The name of the logger
 LOG_SERVER_NAME_IN_LOG: str = "log-server"  # The name of the server in the log messages
 LOG_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the log server
 DELAYED_LOGS_QUEUE_SIZE: int = 100  # The size of the delayed logs queue
@@ -89,7 +89,7 @@ JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=10)  # Refresh token valid duration
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=3)  # Access token valid duration
 # | Database configuration
 DB_HOST: str = "localhost"
-DB_NAME: str = "idranjia"
+DB_NAME: str = "pctowa"
 DB_USER: str = "root"
 DB_PASSWORD: str = ""
 CONNECTION_POOL_SIZE: int = 20  # The maximum number of connections in the pool

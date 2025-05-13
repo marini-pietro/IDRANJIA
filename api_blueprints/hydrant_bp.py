@@ -1,7 +1,7 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
 from .blueprints_utils import (
     check_authorization,
@@ -56,7 +56,7 @@ class Hydrant(Resource):
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
-    def get(self, id_) -> Response:
+    def get(self, id_, identity) -> Response:
         """
         Read hydrant data from the database.
         """
@@ -84,7 +84,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} fetched hydrant with id_ {id_}",
+            message=f"User {identity} fetched hydrant with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -93,7 +93,7 @@ class Hydrant(Resource):
         return create_response(message=hydrant, status_code=STATUS_CODES["ok"])
 
     @jwt_required()
-    def post(self) -> Response:
+    def post(self, identity) -> Response:
         """
         Create a new hydrant row in the database.
         """
@@ -106,29 +106,29 @@ class Hydrant(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        email_ins = get_jwt_identity()
+        email_ins = identity
 
         # Check if the email exists in the database
-        user: Dict[str, Any] = fetchone_query(
-            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
-        )
-        if user is None:
+        email_exists: bool = fetchone_query(
+            "SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex", (email_ins,)
+        )["ex"]
+        if email_exists is False:
             return create_response(
-                message={"error": "email found in JWT not present in database"},
-                status_code=STATUS_CODES["bad_request"],
+            message={"error": "email found in JWT not present in database"},
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the hydrant already exists
-        hydrant: Dict[str, Any] = fetchone_query(
-            "SELECT area_geo FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s",
+        hydrant_exists: bool = fetchone_query(
+            "SELECT EXISTS(SELECT 1 FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s) AS ex",
             (data["stato"], data["latitudine"], data["longitudine"]),
-        )
-        if hydrant is not None:
+        )["ex"]
+        if hydrant_exists is False:
             return create_response(
-                message={
-                    "error": "hydrant with provided stato, latitudine and longitudine already exists"
-                },
-                status_code=STATUS_CODES["bad_request"],
+            message={
+                "error": "hydrant with provided stato, latitudine and longitudine already exists"
+            },
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Insert the new hydrant into the database
@@ -153,7 +153,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} created hydrant with id_ {lastrowid}",
+            message=f"User {identity} created hydrant with id_ {lastrowid}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -168,7 +168,7 @@ class Hydrant(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_) -> Response:
+    def patch(self, id_, identity) -> Response:
         """
         Update a hydrant row in the database by its ID.
         """
@@ -189,24 +189,24 @@ class Hydrant(Resource):
             )
 
         # Check if the ID exists in the database
-        hydrant: Dict[str, Any] = fetchone_query(
-            "SELECT stato FROM idranti WHERE id = %s", (id_,)
-        )
-        if hydrant is None:
+        id_exists: bool = fetchone_query(
+            "SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", (id_,)
+        )["ex"]
+        if not id_exists:
             return create_response(
-                message={"error": "specified resource does not exist in the database"},
-                status_code=STATUS_CODES["not_found"],
+            message={"error": "specified resource does not exist in the database"},
+            status_code=STATUS_CODES["not_found"],
             )
 
         # Check if the email exists in the database
-        email_ins = get_jwt_identity()
-        user: Dict[str, Any] = fetchone_query(
-            "SELECT email FROM utenti WHERE email = %s", (email_ins,)
-        )
-        if user is None:
+        email_ins = identity
+        email_exists: bool = fetchone_query(
+            "SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex", (email_ins,)
+        )["ex"]
+        if not email_exists:
             return create_response(
-                message={"error": "email found in JWT not present in database"},
-                status_code=STATUS_CODES["bad_request"],
+            message={"error": "email found in JWT not present in database"},
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Build the update query
@@ -220,7 +220,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} updated hydrant with id {id_}",
+            message=f"User {identity} updated hydrant with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -235,7 +235,7 @@ class Hydrant(Resource):
         )
 
     @jwt_required()
-    def delete(self, id_) -> Response:
+    def delete(self, id_, identity) -> Response:
         """
         Delete a hydrant row by ID.
         ID is passed as a path variable integer.
@@ -261,7 +261,7 @@ class Hydrant(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} deleted hydrant with id {id_}",
+            message=f"User {identity} deleted hydrant with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )

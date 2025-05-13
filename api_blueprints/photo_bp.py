@@ -1,7 +1,7 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 from typing import Dict, Union, List, Any
@@ -17,9 +17,6 @@ from .blueprints_utils import (
     get_hateos_location_string,
 )
 from config import (
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
 
@@ -48,7 +45,7 @@ class Photo(Resource):
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
-    def get(self, hydrant_id) -> Response:
+    def get(self, hydrant_id, identity) -> Response:
         """
         Get a photo by ID of the hydrant that it represents.
         """
@@ -86,7 +83,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} fetched photos with hydrant id_ {hydrant_id}",
+            message=f"User {identity} fetched photos with hydrant id_ {hydrant_id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -95,7 +92,7 @@ class Photo(Resource):
         return create_response(message=photos, status_code=STATUS_CODES["ok"])
 
     @jwt_required()
-    def post(self) -> Response:
+    def post(self, identity) -> Response:
         """
         Create a new photo row in the database.
         """
@@ -114,24 +111,25 @@ class Photo(Resource):
         date = data["data"]
 
         # Check that hydrant exists
-        hydrant: Dict[str, Any] = fetchone_query(
-            "SELECT id_ FROM hydrants WHERE id_ = %s", (hydrant_id,)
-        )
-        if hydrant is None:
+        hydrant_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM hydrants WHERE id_ = %s) AS ex", 
+            params=(hydrant_id,)
+        )["ex"]
+        if not hydrant_exists:
             return create_response(
-                message={"error": "hydrant not found"},
-                status_code=STATUS_CODES["not_found"],
+            message={"error": "hydrant not found"},
+            status_code=STATUS_CODES["not_found"],
             )
 
         # Check if the photo already exists
-        existing_photo: Dict[str, Any] = fetchone_query(
-            "SELECT * FROM photos WHERE id_idrante = %s AND posizione = %s AND data = %s",
-            (hydrant_id, position, date),
-        )
-        if existing_photo:
+        photo_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM photos WHERE id_idrante = %s AND posizione = %s AND data = %s) AS ex",
+            params=(hydrant_id, position, date),
+        )["ex"]
+        if photo_exists:
             return create_response(
-                message={"error": "photo already exists."},
-                status_code=STATUS_CODES["bad_request"],
+            message={"error": "photo already exists."},
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Insert the new photo into the database
@@ -143,7 +141,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} created photo with hydrant id_ {hydrant_id}",
+            message=f"User {identity} created photo with hydrant id_ {hydrant_id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -158,7 +156,7 @@ class Photo(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_) -> Response:
+    def patch(self, id_, identity) -> Response:
         """
         Update a photo by ID.
         """
@@ -171,14 +169,14 @@ class Photo(Resource):
             )
 
         # Check that the photo exists
-        photo = fetchone_query(
-            query="SELECT data FROM photos WHERE id_foto = %s",
+        photo_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM photos WHERE id_foto = %s) AS ex",
             params=(id_,),
-        )
-        if photo is None:
+        )["ex"]
+        if not photo_exists:
             return create_response(
-                message={"error": "photo with specified id not found"},
-                status_code=STATUS_CODES["not_found"],
+            message={"error": "photo with specified id not found"},
+            status_code=STATUS_CODES["not_found"],
             )
 
         # Validate and deserialize input data
@@ -199,7 +197,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} updated photo with id_ {id_}",
+            message=f"User {identity} updated photo with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -214,7 +212,7 @@ class Photo(Resource):
         )
 
     @jwt_required()
-    def delete(self, id_) -> Response:
+    def delete(self, id_, identity) -> Response:
         """
         Delete a photo by ID.
         """
@@ -241,7 +239,7 @@ class Photo(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} deleted photo with id_ {id_}",
+            message=f"User {identity} deleted photo with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )

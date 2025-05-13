@@ -175,6 +175,14 @@ def custom_unauthorized_response(callback):
 # Handle invalid tokens
 @jwt.invalid_token_loader
 def custom_invalid_token_response(callback):
+    log(
+        log_type="error",
+        message=f"api reached with invalid token, callback: {callback}",
+        origin_name=API_SERVER_NAME_IN_LOG,
+        origin_host=API_SERVER_HOST,
+        message_id="UserAction",
+        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+    )
     return jsonify({"error": "Invalid token"}), STATUS_CODES["unprocessable_entity"]
 
 
@@ -232,6 +240,8 @@ if __name__ == "__main__":
     log(
         log_type="info",
         message="API server started",
-        message_id="ServerAction",
-        structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        origin_name=API_SERVER_NAME_IN_LOG,
+        origin_host=API_SERVER_HOST,
+        message_id="UserAction",
+        structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
     )
