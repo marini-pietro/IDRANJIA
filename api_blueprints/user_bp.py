@@ -4,7 +4,7 @@ from os.path import basename as os_path_basename
 from typing import List, Dict, Any, Union
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 from requests import post as requests_post
 from requests.exceptions import RequestException
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -15,12 +15,11 @@ from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 
 from config import (
-    API_SERVER_HOST,
-    API_SERVER_NAME_IN_LOG,
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
     STATUS_CODES,
     LOGIN_AVAILABLE_THROUGH_API,
+    AUTH_SERVER_SSL,
 )
 
 from .blueprints_utils import (
@@ -77,7 +76,7 @@ class User(Resource):
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<string:email>"]
 
     @jwt_required()
-    def get(self, email) -> Response:
+    def get(self, email, identity) -> Response:
         """
         Get user information from the database by its email.
         The email is passed as a path variable.
@@ -99,7 +98,7 @@ class User(Resource):
         # Log the retrieval
         log(
             log_type="info",
-            message=f"User {get_jwt_identity} retrieved user {email} data",
+            message=f"User {identity} retrieved user {email} data",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -111,7 +110,7 @@ class User(Resource):
         )
 
     @jwt_required()
-    def post(self) -> Response:
+    def post(self, identity) -> Response:
         """
         Create a new user in the database.
         The request body must be a JSON object with application/json content type.
@@ -129,15 +128,15 @@ class User(Resource):
         password = data["password"]
         comune = data["comune"]
 
-        # Check if the user already exists in the database
-        existing_user = fetchone_query(
-            query="SELECT * FROM utenti WHERE email = %s",
+        # Check if the user already exists in the database using EXISTS keyword
+        user_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex",
             params=(email,),
-        )
-        if existing_user is not None:
+        )["ex"]
+        if user_exists:
             return create_response(
-                message={"error": "user with provided email already exists"},
-                status_code=STATUS_CODES["conflict"],
+            message={"error": "user with provided email already exists"},
+            status_code=STATUS_CODES["conflict"],
             )
 
         # Hash the password
@@ -152,19 +151,20 @@ class User(Resource):
         # Log the creation
         log(
             log_type="info",
-            message=f"User {get_jwt_identity} created user {email}",
+            message=f"User {identity} created user {email}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return a success response
         return create_response(
-            message={"success": f"User {email} created"},
+            message={"outcome": f"User {email} created",
+                     "location": get_hateos_location_string(bp_name=BP_NAME, id_=email)},
             status_code=STATUS_CODES["created"],
         )
 
     @jwt_required()
-    def patch(self) -> Response:
+    def patch(self, email, identity) -> Response:
         """
         Update user information in the database.
         The request body must be a JSON object with application/json content type.
@@ -178,19 +178,18 @@ class User(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        email = data["email"]
         password = data.get("password")
         comune = data.get("comune")
 
-        # Check if the user exists in the database
-        user: Dict[str, Any] = fetchone_query(
-            query="SELECT * FROM utenti WHERE email = %s",
+        # Check if the user exists in the database using EXISTS keyword
+        user_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex",
             params=(email,),
-        )
-        if user is None:
+        )["ex"]
+        if not user_exists:
             return create_response(
-                message={"error": "user not found"},
-                status_code=STATUS_CODES["not_found"],
+            message={"error": "user not found"},
+            status_code=STATUS_CODES["not_found"],
             )
 
         # Build the update query based on provided fields
@@ -207,7 +206,7 @@ class User(Resource):
         # Log the update
         log(
             log_type="info",
-            message=f"User {get_jwt_identity} updated user {email}",
+            message=f"User {identity} updated user {email}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -219,7 +218,7 @@ class User(Resource):
         )
 
     @jwt_required()
-    def delete(self, email) -> Response:
+    def delete(self, email, identity) -> Response:
         """
         Delete a user from the database by its email.
         """
@@ -239,7 +238,7 @@ class User(Resource):
         # Log the deletion
         log(
             log_type="info",
-            message=f"User {email} deleted",
+            message=f"User {email} deleted user {identity}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -258,6 +257,11 @@ class User(Resource):
         """
         return handle_options_request(resource_class=self)
 
+class UserLoginSchema(ma.Schema):
+    email = fields.Email(required=True)
+    password = fields.String(required=True)
+
+user_login_schema = UserLoginSchema()
 
 class UserLogin(Resource):
     """
@@ -279,20 +283,28 @@ class UserLogin(Resource):
         if not LOGIN_AVAILABLE_THROUGH_API:
             return create_response(
                 message={
-                    "error": "login not available through API server, contact authentication service directly"
+                    "error": "login not available through API server, "
+                    "contact authentication service directly"
                 },
                 status_code=STATUS_CODES["forbidden"],
             )
 
-        # Gather parameters
-        data = request.get_json()
-        email: str = data.get("email")
-        password: str = data.get("password")
+        # Validate and deserialize input using Marshmallow
+        try:
+            data = user_login_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"errors": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        email: str = data["email"]
+        password: str = data["password"]
 
         try:
             # Forward login request to the authentication service
             response = requests_post(
-                f"http://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/login",
+                f"{"https" if AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/login",
                 json={"email": email, "password": password},
                 timeout=5,
             )
@@ -302,13 +314,12 @@ class UserLogin(Resource):
             log(
                 log_type="error",
                 message=f"Authentication service unavailable: {str(ex)}",
-                message_id="UserAction",
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
 
             # Return error response
             return create_response(
-                message={"error": "Authentication service unavailable"},
+                message={"error": "authentication service unavailable"},
                 status_code=STATUS_CODES["internal_error"],
             )
 
@@ -327,8 +338,7 @@ class UserLogin(Resource):
             log(
                 log_type="warning",
                 message=f"Failed login attempt for email: {email}",
-                message_id="UserAction",
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
             return create_response(
                 message={"error": "Invalid credentials"},
@@ -339,8 +349,7 @@ class UserLogin(Resource):
             log(
                 log_type="error",
                 message=f"Bad request during login for email: {email}",
-                message_id="UserAction",
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
             return create_response(
                 message={"error": "Bad request"},
@@ -351,8 +360,7 @@ class UserLogin(Resource):
             log(
                 log_type="error",
                 message=f"Internal error during login for email: {email}",
-                message_id="UserAction",
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
             return create_response(
                 message={"error": "Internal error"},
@@ -366,8 +374,7 @@ class UserLogin(Resource):
                     f"Unexpected error during login for email: {email} "
                     f"with status code: {response.status_code}"
                 ),
-                message_id="UserAction",
-                structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
             return create_response(
                 message={"error": "Unexpected error during login"},

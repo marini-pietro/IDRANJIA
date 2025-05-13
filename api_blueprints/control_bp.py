@@ -1,7 +1,7 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
 from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
@@ -16,9 +16,6 @@ from .blueprints_utils import (
     handle_options_request,
 )
 from config import (
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
 
@@ -46,7 +43,7 @@ class Control(Resource):
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
-    def get(self, id_) -> Response:
+    def get(self, id_, identity) -> Response:
         """
         Get a control row data by ID.
         ID is passed as a path variable integer.
@@ -75,16 +72,17 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} fetched control with id {id_}",
+            message=f"User {identity} fetched control with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the control as a JSON response
-        return create_response(message=control, status_code=STATUS_CODES["ok"])
+        return create_response(message=control, 
+                               status_code=STATUS_CODES["ok"])
 
     @jwt_required()
-    def post(self) -> Response:
+    def post(self, identity) -> Response:
         """
         Create a new row in control table.
         The data is passed as a JSON body.
@@ -104,10 +102,11 @@ class Control(Resource):
         id_idrante = data["id_idrante"]
 
         # Check that the id_idrante exists in the database
-        hydrant: Dict[str, Any] = fetchone_query(
-            query="SELECT stato FROM idranti WHERE id = %s", params=(id_idrante,)
-        )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if hydrant is None:
+        hydrant_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", 
+            params=(id_idrante,)
+        )["ex"]
+        if not hydrant_exists:
             return create_response(
                 message={"error": "id_idrante does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
@@ -123,7 +122,7 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} created control with id_ {lastrowid}",
+            message=f"User {identity} created control with id_ {lastrowid}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -132,13 +131,13 @@ class Control(Resource):
         return create_response(
             message={
                 "outcome": "successfully created new control",
-                "location": f"http://{API_SERVER_HOST}:{API_SERVER_PORT}/{Control.ENDPOINT_PATHS[0]}/{lastrowid}",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
             },
             status_code=STATUS_CODES["created"],
         )
 
     @jwt_required()
-    def patch(self, id_) -> Response:
+    def patch(self, id_, identity) -> Response:
         """
         Update a control row by ID.
         ID is passed as a path variable integer.
@@ -170,10 +169,11 @@ class Control(Resource):
         id_idrante: int = data.get("id_idrante")
 
         # Check that the id_idrante exists in the database
-        hydrant: Dict[str, Any] = fetchone_query(
-            query="SELECT stato FROM idranti WHERE id = %s", params=(id_idrante,)
-        )  # Column in SELECT is not important, we just need to check if the id_ exists
-        if hydrant is None:
+        hydrant_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", 
+            params=(id_idrante,)
+        )["ex"]
+        if not hydrant_exists:
             return create_response(
                 message={"error": "specified hydrant does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
@@ -190,7 +190,7 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} updated control with id {id_}",
+            message=f"User {identity} updated control with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -205,7 +205,7 @@ class Control(Resource):
         )
 
     @jwt_required()
-    def delete(self, id_) -> Response:
+    def delete(self, id_, identity) -> Response:
         """
         Delete a control row by ID.
         ID is passed as a path variable integer.
@@ -233,7 +233,7 @@ class Control(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} deleted control with id_ {id_}",
+            message=f"User {identity} deleted control with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )

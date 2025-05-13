@@ -1,7 +1,7 @@
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
 from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
@@ -17,9 +17,6 @@ from .blueprints_utils import (
     handle_options_request,
 )
 from config import (
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
 
@@ -47,7 +44,7 @@ class Operator(Resource):
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>", f"/{BP_NAME}/<string:CF>"]
 
     @jwt_required()
-    def get(self, id_) -> Response:
+    def get(self, id_, identity) -> Response:
         """
         Get the information of an operator from the database.
         """
@@ -74,16 +71,17 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} fetched operator with id {id_}",
+            message=f"User {identity} fetched operator with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the operator as a JSON response
-        return create_response(message=operator, status_code=STATUS_CODES["ok"])
+        return create_response(message=operator, 
+                               status_code=STATUS_CODES["ok"])
 
     @jwt_required()
-    def post(self) -> Response:
+    def post(self, identity) -> Response:
         """
         Create a new operator row in the database.
         """
@@ -100,14 +98,14 @@ class Operator(Resource):
         name = data["nome"]
         surname = data["cognome"]
 
-        # Check if the operator already exists
-        operator: Dict[str, Any] = fetchone_query(
-            query="SELECT nome FROM operatori WHERE CF = %s", params=(cf,)
-        )  # Column in SELECT is not important, we just need to check if the row exists
-        if operator is not None:
+        # Check if the operator already exists using EXISTS keyword
+        operator_exists: bool = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM operatori WHERE CF = %s) AS ex", params=(cf,)
+        )["ex"]
+        if not operator_exists:
             return create_response(
-                message={"error": "operator already exists."},
-                status_code=STATUS_CODES["bad_request"],
+            message={"error": "operator already exists."},
+            status_code=STATUS_CODES["bad_request"],
             )
 
         # Insert the new operator into the database
@@ -119,7 +117,7 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} created operator with id {lastrowid}",
+            message=f"User {identity} created operator with id {lastrowid}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -134,7 +132,7 @@ class Operator(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_) -> Response:
+    def patch(self, id_, identity) -> Response:
         """
         Update an operator in the database by its ID.
         """
@@ -158,20 +156,20 @@ class Operator(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check that the operator exists
-        operator = fetchone_query(
-            query="SELECT nome FROM operatori WHERE id = %s", params=(id_,)
-        )
-        if operator is None:
+        # Check that the operator exists using EXISTS keyword
+        operator_exists = fetchone_query(
+            query="SELECT EXISTS(SELECT 1 FROM operatori WHERE id = %s) AS ex", params=(id_,)
+        )["ex"]
+        if not operator_exists:
             return create_response(
-                message={"error": "no resource found with specified id"},
-                status_code=STATUS_CODES["not_found"],
+            message={"error": "no resource found with specified id"},
+            status_code=STATUS_CODES["not_found"],
             )
 
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} updated operator with id {id_}",
+            message=f"User {identity} updated operator with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -197,7 +195,7 @@ class Operator(Resource):
         )
 
     @jwt_required()
-    def delete(self, CF) -> Response:
+    def delete(self, CF, identity) -> Response:
         """
         Delete an operator from the database.
         """
@@ -224,7 +222,7 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {get_jwt_identity()} deleted opearator with cf {CF}",
+            message=f"User {identity} deleted opearator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
