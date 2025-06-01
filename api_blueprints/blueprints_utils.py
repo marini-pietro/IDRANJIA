@@ -10,14 +10,11 @@ from functools import wraps
 from inspect import isclass as inspect_isclass, signature as inspect_signature
 from os import getpid
 from queue import Queue
-from sys import exit as sys_exit
 from threading import Lock, Thread
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Union
 
-from contextlib import contextmanager
 from cachetools import TTLCache
 from flask import Response, jsonify, make_response, request
-from mysql.connector.pooling import MySQLConnectionPool
 from requests import post as requests_post
 from requests.exceptions import Timeout
 from requests.exceptions import RequestException
@@ -30,11 +27,6 @@ from config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
     AUTH_SERVER_SSL,
-    CONNECTION_POOL_SIZE,
-    DB_HOST,
-    DB_NAME,
-    DB_PASSWORD,
-    DB_USER,
     JWT_JSON_KEY,
     JWT_QUERY_STRING_NAME,
     JWT_VALIDATION_CACHE_SIZE,
@@ -294,178 +286,6 @@ def is_rate_limited(client_ip: str) -> bool:
 
         # Check if the rate limit is exceeded
         return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
-
-
-# Database related
-# Lazy initialization for the database connection pool
-_DB_POOL: MySQLConnectionPool = (
-    None  # Private variable to hold the connection pool instance
-)
-
-
-def get_db_pool():
-    """
-    Get the database connection pool instance, initializing it if necessary.
-    """
-    global _DB_POOL
-    if (
-        _DB_POOL is None
-    ):  # Initialize only when accessed for the first time (lazy initialization)
-        try:
-            _DB_POOL = MySQLConnectionPool(
-                pool_name="pctowa_connection_pool",
-                pool_size=max(1, CONNECTION_POOL_SIZE),
-                # Session reset not needed for this application (no transactions)
-                pool_reset_session=False,
-                host=DB_HOST,
-                user=DB_USER,
-                password=DB_PASSWORD,
-                database=DB_NAME,
-            )
-        except socket.error as ex:
-            print(
-                f"Couldn't access database, see next line for full exception.\n{ex}\n"
-                f"host: {DB_HOST}, dbname: {DB_NAME}, user: {DB_USER}, password: {DB_PASSWORD}\n"
-                f"Make sure to shutdown all microservices with the provided kill_quick script, "
-                f"change the configuration and try again.\n"
-            )
-            sys_exit(1)
-    return _DB_POOL
-
-
-# Function to get a connection from the pool
-@contextmanager  # Make a context manager to ensure the connection is closed after use
-def get_db_connection():
-    """
-    Get a database connection from the pool using lazy initialization.
-    """
-    connection = get_db_pool().get_connection()  # Use the lazily initialized pool
-    try:
-        yield connection
-    finally:
-        connection.close()
-
-
-# Function to clear the connection pool
-def clear_db_connection_pool():
-    """
-    Clear the database connection pool by closing all connections.
-    """
-    global _DB_POOL
-    if _DB_POOL is not None:
-        while True:
-            try:
-                connection = _DB_POOL.get_connection()
-                connection.close()
-            except Exception:
-                break
-        _DB_POOL = None
-
-
-# Endpoint utility functions
-def build_update_query_from_filters(
-    data, table_name, pk_column, pk_value
-) -> Tuple[str, List[Any]]:
-    """
-    Build a SQL update query from filters.
-
-    params:
-        data - The filters to apply to the query
-        table_name - The name of the table to query
-        pk_column - The name of the ID column to use for the update
-
-    returns:
-        A tuple containing the query and the parameters to pass to the query
-
-    raises:
-        None
-    """
-
-    # Remove keys with None values from the dictionary
-    data = {key: value for key, value in data.items() if value is not None}
-
-    filters = ", ".join([f"{key} = %s" for key in data.keys()])
-    params = list(data.values()) + [pk_value]
-    query = f"UPDATE {table_name} SET {filters} WHERE {pk_column} = %s"
-    return query, params
-
-
-def check_column_existence(
-    modifiable_columns: List[str], to_modify: List[str]
-) -> Union[Response, bool]:
-    """
-    Check if the columns to modify exist in the modifiable columns.
-    If not, return an error response.
-    If all columns are valid, return True.
-
-    Params:
-        modifiable_columns - The list of columns that can be modified
-        to_modify - The list of columns to modify
-
-    Returns:
-        Response or bool - An error response if there are invalid columns,
-                           or True if all columns are valid
-    """
-
-    error_columns = [field for field in to_modify if field not in modifiable_columns]
-
-    # If there are any error columns, return an error response
-    if error_columns:
-        return f"error, field(s) {error_columns} do not exist or cannot be modified"
-
-    # If all columns are valid, return True
-    return True
-
-
-# Database query related
-def fetchone_query(query: str, params: Tuple[Any]) -> Union[Dict[str, Any], None]:
-    """
-    Execute a query on the database and return the result.
-
-    params:
-        query - The query to execute
-        params - The parameters to pass to the query
-
-    returns:
-        The result of the query
-    """
-
-    # Use a context manager to ensure the connection is closed after use
-    with get_db_connection() as connection:
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(query, params)
-            return cursor.fetchone()
-
-
-def fetchall_query(query: str, params: Tuple[Any]) -> Union[List[Dict[str, Any]], None]:
-    """
-    Execute a query on the database and return the result.
-    """
-
-    with get_db_connection() as connection:
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(query, params)
-            return cursor.fetchall()
-
-
-def execute_query(query: str, params: Tuple[Any]) -> Tuple[int, int]:
-    """
-    Execute a query on the database and commit the changes.
-
-    params:
-        query - The query to execute
-        params - The parameters to pass to the query
-
-    returns:
-        The ID of the last inserted row, if applicable
-        The number of rows affected by the query
-    """
-    # Use a context manager to ensure the connection is closed after use
-    with get_db_connection() as connection:
-        with connection.cursor(dictionary=True) as cursor:
-            cursor.execute(query, params)
-            connection.commit()
-            return cursor.lastrowid, cursor.rowcount
 
 
 # Log server related

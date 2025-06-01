@@ -5,12 +5,9 @@ from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
 from .blueprints_utils import (
     check_authorization,
-    fetchone_query,
-    execute_query,
     log,
     create_response,
     handle_options_request,
-    build_update_query_from_filters,
     get_hateos_location_string,
 )
 from config import (
@@ -21,6 +18,7 @@ from config import (
 )
 from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
+from models import db, Hydrant, User
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -47,7 +45,7 @@ class HydrantSchema(ma.Schema):
 hydrant_schema = HydrantSchema()
 
 
-class Hydrant(Resource):
+class HydrantResource(Resource):
     """
     Hydrant resource for managing hydrant data.
     This class provides methods to create, read, update, and delete hydrant records.
@@ -69,10 +67,7 @@ class Hydrant(Resource):
             )
 
         # Get the data
-        hydrant: Dict[str, Any] = fetchone_query(
-            "SELECT stato, latitudine, longitudine, comune, via, area_geo, tipo, accessibilità, email_ins FROM idranti WHERE id = %s",
-            (id_,),
-        )
+        hydrant: Hydrant = Hydrant.query.filter_by(id=id_).first()
 
         # Check if the result is empty
         if hydrant is None:
@@ -90,7 +85,7 @@ class Hydrant(Resource):
         )
 
         # Return the hydrant as a JSON response
-        return create_response(message=hydrant, status_code=STATUS_CODES["ok"])
+        return create_response(message=hydrant.to_dict(), status_code=STATUS_CODES["ok"])
 
     @jwt_required()
     def post(self, identity) -> Response:
@@ -109,9 +104,7 @@ class Hydrant(Resource):
         email_ins = identity
 
         # Check if the email exists in the database
-        email_exists: bool = fetchone_query(
-            "SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex", (email_ins,)
-        )["ex"]
+        email_exists: bool = User.query.filter_by(email=email_ins).first() is not None
         if email_exists is False:
             return create_response(
             message={"error": "email found in JWT not present in database"},
@@ -119,10 +112,13 @@ class Hydrant(Resource):
             )
 
         # Check if the hydrant already exists
-        hydrant_exists: bool = fetchone_query(
-            "SELECT EXISTS(SELECT 1 FROM idranti WHERE stato = %s AND latitudine = %s AND longitudine = %s) AS ex",
-            (data["stato"], data["latitudine"], data["longitudine"]),
-        )["ex"]
+        hydrant_exists: bool = db.session.query(
+            db.func.exists().select().where(
+                Hydrant.stato == data["stato"],
+                Hydrant.latitudine == data["latitudine"],
+                Hydrant.longitudine == data["longitudine"],
+            )
+        ).scalar()
         if hydrant_exists is False:
             return create_response(
             message={
@@ -132,28 +128,24 @@ class Hydrant(Resource):
             )
 
         # Insert the new hydrant into the database
-        lastrowid = execute_query(
-            "INSERT INTO idranti (stato, latitudine, longitudine, "
-            "comune, via, area_geo, "
-            "tipo, accessibilità, email_ins) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                data["stato"],
-                data["latitudine"],
-                data["longitudine"],
-                data["comune"],
-                data["via"],
-                data["area_geo"],
-                data["tipo"],
-                data["accessibilità"],
-                email_ins,
-            ),
+        new_hydrant = Hydrant(
+            stato=data["stato"],
+            latitudine=data["latitudine"],
+            longitudine=data["longitudine"],
+            comune=data["comune"],
+            via=data["via"],
+            area_geo=data["area_geo"],
+            tipo=data["tipo"],
+            accessibilità=data["accessibilità"],
+            email_ins=email_ins,
         )
+        db.session.add(new_hydrant)
+        db.session.commit()
 
         # Log the action
         log(
             type="info",
-            message=f"User {identity} created hydrant with id_ {lastrowid}",
+            message=f"User {identity} created hydrant with id_ {new_hydrant.id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -162,7 +154,7 @@ class Hydrant(Resource):
         return create_response(
             message={
                 "outcome": "successfully created new hydrant",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_hydrant.id),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -189,10 +181,8 @@ class Hydrant(Resource):
             )
 
         # Check if the ID exists in the database
-        id_exists: bool = fetchone_query(
-            "SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", (id_,)
-        )["ex"]
-        if not id_exists:
+        hydrant = Hydrant.query.filter_by(id=id_).first()
+        if not hydrant:
             return create_response(
             message={"error": "specified resource does not exist in the database"},
             status_code=STATUS_CODES["not_found"],
@@ -200,22 +190,18 @@ class Hydrant(Resource):
 
         # Check if the email exists in the database
         email_ins = identity
-        email_exists: bool = fetchone_query(
-            "SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex", (email_ins,)
-        )["ex"]
+        email_exists: bool = User.query.filter_by(email=email_ins).first() is not None
         if not email_exists:
             return create_response(
             message={"error": "email found in JWT not present in database"},
             status_code=STATUS_CODES["bad_request"],
             )
 
-        # Build the update query
-        query, params = build_update_query_from_filters(
-            data=data, table_name="idranti", pk_column="id", pk_value=id_
-        )
+        # Update the hydrant object
+        for key, value in data.items():
+            setattr(hydrant, key, value)
 
-        # Execute the update query
-        execute_query(query, params)
+        db.session.commit()
 
         # Log the action
         log(
@@ -249,14 +235,15 @@ class Hydrant(Resource):
             )
 
         # Execute the query
-        _, rows_affected = execute_query("DELETE FROM idranti WHERE id = %s", (id_,))
-
-        # Check if any rows were affected
-        if rows_affected == 0:
+        hydrant = Hydrant.query.filter_by(id=id_).first()
+        if hydrant is None:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
+
+        db.session.delete(hydrant)
+        db.session.commit()
 
         # Log the action
         log(
@@ -277,4 +264,4 @@ class Hydrant(Resource):
         return handle_options_request(resource_class=self)
 
 
-api.add_resource(Hydrant, *Hydrant.ENDPOINT_PATHS)
+api.add_resource(HydrantResource, *HydrantResource.ENDPOINT_PATHS)

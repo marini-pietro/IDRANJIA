@@ -7,17 +7,15 @@ from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 from .blueprints_utils import (
     check_authorization,
-    fetchone_query,
-    execute_query,
     log,
     create_response,
-    build_update_query_from_filters,
     get_hateos_location_string,
     handle_options_request,
 )
 from config import (
     STATUS_CODES,
 )
+from models import db, Control, Hydrant
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -38,7 +36,7 @@ class ControlSchema(ma.Schema):
 
 control_schema = ControlSchema()
 
-class Control(Resource):
+class ControlResource(Resource):
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
@@ -57,10 +55,7 @@ class Control(Resource):
             )
 
         # Get the data
-        control: Dict[str, Any] = fetchone_query(
-            query="SELECT tipo, esito, data, id_idrante FROM controlli WHERE id_controllo = %s",
-            params=(id_,),
-        )
+        control: Control = Control.query.filter_by(id_controllo=id_).first()
 
         # Check if the result is empty
         if control is None:
@@ -78,7 +73,7 @@ class Control(Resource):
         )
 
         # Return the control as a JSON response
-        return create_response(message=control, 
+        return create_response(message=control.serialize(), 
                                status_code=STATUS_CODES["ok"])
 
     @jwt_required()
@@ -102,27 +97,29 @@ class Control(Resource):
         id_idrante = data["id_idrante"]
 
         # Check that the id_idrante exists in the database
-        hydrant_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", 
-            params=(id_idrante,)
-        )["ex"]
+        hydrant_exists: bool = Hydrant.query.filter_by(id=id_idrante).first() is not None
         if not hydrant_exists:
             return create_response(
                 message={"error": "id_idrante does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Execute the query
-        lastrowid = execute_query(
-            query="INSERT INTO controlli (tipo, esito, data, id_idrante) "
-            "VALUES (%s, %s, %s, %s)",
-            params=(tipo, esito, data_esecuzione, id_idrante),
+        # Create a new Control instance
+        new_control = Control(
+            tipo=tipo,
+            esito=esito,
+            data=data_esecuzione,
+            id_idrante=id_idrante
         )
+
+        # Add to session and commit
+        db.session.add(new_control)
+        db.session.commit()
 
         # Log the action
         log(
             type="info",
-            message=f"User {identity} created control with id_ {lastrowid}",
+            message=f"User {identity} created control with id_ {new_control.id_controllo}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -131,7 +128,7 @@ class Control(Resource):
         return create_response(
             message={
                 "outcome": "successfully created new control",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_control.id_controllo),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -153,9 +150,7 @@ class Control(Resource):
             )
         
         # Check that the control exists in the database
-        control: Dict[str, Any] = fetchone_query(
-            query="SELECT tipo FROM controlli WHERE id_controllo = %s", params=(id_,)
-        )  # Column in SELECT is not important, we just need to check if the id_ exists
+        control: Control = Control.query.filter_by(id_controllo=id_).first()
         if control is None:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
@@ -169,23 +164,25 @@ class Control(Resource):
         id_idrante: int = data.get("id_idrante")
 
         # Check that the id_idrante exists in the database
-        hydrant_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM idranti WHERE id = %s) AS ex", 
-            params=(id_idrante,)
-        )["ex"]
+        hydrant_exists: bool = Hydrant.query.filter_by(id=id_idrante).first() is not None
         if not hydrant_exists:
             return create_response(
                 message={"error": "specified hydrant does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Build the query
-        query, params = build_update_query_from_filters(
-            data=data, table_name="controlli", id_column="id_controllo", id_value=id_
-        )
+        # Update the control instance
+        if tipo is not None:
+            control.tipo = tipo
+        if esito is not None:
+            control.esito = esito
+        if data_esecuzione is not None:
+            control.data = data_esecuzione
+        if id_idrante is not None:
+            control.id_idrante = id_idrante
 
-        # Execute the query
-        execute_query(query=query, params=params)
+        # Commit the changes
+        db.session.commit()
 
         # Log the action
         log(
@@ -218,17 +215,17 @@ class Control(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Execute the query
-        _, rows_affected = execute_query(
-            query="DELETE FROM controlli WHERE id_controllo = %s", params=(id_,)
-        )
-
-        # Check if the row was deleted
-        if rows_affected == 0:
+        # Check if the control exists
+        control: Control = Control.query.filter_by(id_controllo=id_).first()
+        if control is None:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
             )
+
+        # Delete the control
+        db.session.delete(control)
+        db.session.commit()
 
         # Log the action
         log(
@@ -249,4 +246,4 @@ class Control(Resource):
         return handle_options_request(resource_class=self)
 
 
-api.add_resource(Control, *Control.ENDPOINT_PATHS)
+api.add_resource(ControlResource, *ControlResource.ENDPOINT_PATHS)

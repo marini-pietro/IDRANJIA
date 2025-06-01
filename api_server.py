@@ -13,6 +13,7 @@ from importlib import import_module
 from flask import Flask, jsonify, request
 from flask_jwt_extended import JWTManager
 from flask_marshmallow import Marshmallow
+from flask_sqlalchemy import SQLAlchemy
 from api_blueprints import __all__  # Import all the blueprints
 from api_blueprints.blueprints_utils import log, is_rate_limited
 from config import (
@@ -35,6 +36,8 @@ from config import (
     API_SERVER_SSL_CERT,
     API_SERVER_SSL_KEY,
     SQL_PATTERN,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
 )
 
 # Create a Flask app
@@ -58,12 +61,17 @@ main_api.config["JWT_REFRESH_JSON_KEY"] = (
 main_api.config["JWT_REFRESH_TOKEN_EXPIRES"] = (
     JWT_REFRESH_TOKEN_EXPIRES  # Refresh token valid duration
 )
+main_api.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+main_api.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
 
 # Initialize JWTManager for validation only
 jwt = JWTManager(main_api)
 
 # Initialize Marshmallow
 ma = Marshmallow(main_api)
+
+# Initialize SQLAlchemy
+db = SQLAlchemy(main_api)
 
 
 def is_input_safe(data: Union[str, List[Any], Dict[Any, Any]]) -> bool:
@@ -225,6 +233,9 @@ if __name__ == "__main__":
                 blueprint, url_prefix=URL_PREFIX
             )  # Remove '_bp' for the URL prefix
             print(f"Registered blueprint: {module_name} with prefix {URL_PREFIX}")
+
+    # Initialize the database
+    db.create_all()
 
     # Start the server
     main_api.run(

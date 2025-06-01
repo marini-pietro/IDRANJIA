@@ -7,18 +7,15 @@ from marshmallow import fields, ValidationError
 from typing import Dict, Union, List, Any
 from .blueprints_utils import (
     check_authorization,
-    fetchone_query,
-    fetchall_query,
-    execute_query,
     log,
     create_response,
     handle_options_request,
-    build_update_query_from_filters,
     get_hateos_location_string,
 )
 from config import (
     STATUS_CODES,
 )
+from models import db, Photo
 
 # Initialize Marshmallow
 ma = Marshmallow()
@@ -40,7 +37,7 @@ class PhotoSchema(ma.Schema):
 photo_schema = PhotoSchema()
 
 
-class Photo(Resource):
+class PhotoResource(Resource):
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
@@ -58,9 +55,7 @@ class Photo(Resource):
             )
 
         # Check that hydrant exists
-        hydrant = fetchone_query(
-            query="SELECT stato FROM hydrants WHERE id = %s", params=(hydrant_id,)
-        )
+        hydrant = Photo.query.filter_by(id=hydrant_id).first()
         if hydrant is None:
             return create_response(
                 message={"error": "hydrant not found"},
@@ -68,13 +63,14 @@ class Photo(Resource):
             )
 
         # Get the data
-        photos: List[Dict[str, Any]] = fetchall_query(
-            query="SELECT posizione, data FROM photos WHERE id_idrante = %s",
-            params=(hydrant_id,),
+        photos: List[Dict[str, Any]] = (
+            Photo.query.filter_by(id_idrante=hydrant_id)
+            .with_entities(Photo.posizione, Photo.data)
+            .all()
         )
 
         # Check if photos exist
-        if photos is None:
+        if not photos:
             return create_response(
                 message={"error": "no photos found"},
                 status_code=STATUS_CODES["not_found"],
@@ -111,10 +107,9 @@ class Photo(Resource):
         date = data["data"]
 
         # Check that hydrant exists
-        hydrant_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM hydrants WHERE id_ = %s) AS ex", 
-            params=(hydrant_id,)
-        )["ex"]
+        hydrant_exists = db.session.query(
+            db.session.query(Photo).filter_by(id_=hydrant_id).exists()
+        ).scalar()
         if not hydrant_exists:
             return create_response(
             message={"error": "hydrant not found"},
@@ -122,10 +117,11 @@ class Photo(Resource):
             )
 
         # Check if the photo already exists
-        photo_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM photos WHERE id_idrante = %s AND posizione = %s AND data = %s) AS ex",
-            params=(hydrant_id, position, date),
-        )["ex"]
+        photo_exists = db.session.query(
+            db.session.query(Photo).filter_by(
+                id_idrante=hydrant_id, posizione=position, data=date
+            ).exists()
+        ).scalar()
         if photo_exists:
             return create_response(
             message={"error": "photo already exists."},
@@ -133,10 +129,9 @@ class Photo(Resource):
             )
 
         # Insert the new photo into the database
-        insert_query = (
-            "INSERT INTO photos (id_idrante, posizione, data) VALUES (%s, %s, %s)"
-        )
-        lastrowid = execute_query(insert_query, (hydrant_id, position, date))
+        new_photo = Photo(id_idrante=hydrant_id, posizione=position, data=date)
+        db.session.add(new_photo)
+        db.session.commit()
 
         # Log the action
         log(
@@ -150,7 +145,7 @@ class Photo(Resource):
         return create_response(
             message={
                 "outcome": "photo successfully created",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_photo.id_foto),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -169,10 +164,9 @@ class Photo(Resource):
             )
 
         # Check that the photo exists
-        photo_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM photos WHERE id_foto = %s) AS ex",
-            params=(id_,),
-        )["ex"]
+        photo_exists = db.session.query(
+            db.session.query(Photo).filter_by(id_foto=id_).exists()
+        ).scalar()
         if not photo_exists:
             return create_response(
             message={"error": "photo with specified id not found"},
@@ -189,10 +183,10 @@ class Photo(Resource):
             )
 
         # Update the photo in the database
-        query, params = build_update_query_from_filters(
-            data=data, table_name="photos", pk_column="id_foto", pk_value=id_
-        )
-        execute_query(query, params)
+        photo = Photo.query.get(id_)
+        for key, value in data.items():
+            setattr(photo, key, value)
+        db.session.commit()
 
         # Log the action
         log(
@@ -225,16 +219,14 @@ class Photo(Resource):
             )
 
         # Delete the photo from the database
-        _, rows_affected = execute_query(
-            query="DELETE FROM photos WHERE id_foto = %s", params=(id_,)
-        )
-
-        # Check if any rows were affected
-        if rows_affected == 0:
+        photo = Photo.query.get(id_)
+        if photo is None:
             return create_response(
                 message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
             )
+        db.session.delete(photo)
+        db.session.commit()
 
         # Log the action
         log(
@@ -255,4 +247,4 @@ class Photo(Resource):
         return handle_options_request(resource_class=self)
 
 
-api.add_resource(Photo, *Photo.ENDPOINT_PATHS)
+api.add_resource(PhotoResource, *PhotoResource.ENDPOINT_PATHS)

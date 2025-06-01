@@ -10,7 +10,6 @@ from requests.exceptions import RequestException
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from mysql.connector import IntegrityError
 from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 
@@ -24,16 +23,13 @@ from config import (
 
 from .blueprints_utils import (
     check_authorization,
-    fetchone_query,
-    fetchall_query,
-    execute_query,
     log,
     create_response,
-    build_update_query_from_filters,
     handle_options_request,
     check_column_existence,
     get_hateos_location_string,
 )
+from models import db, User  # Import User model for ORM
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -83,10 +79,7 @@ class User(Resource):
         """
 
         # Fetch user data from the database
-        user = fetchone_query(
-            query="SELECT * FROM utenti WHERE email = %s",
-            params=(email,),
-        )
+        user = User.query.filter_by(email=email).first()
 
         # Check if user exists
         if user is None:
@@ -129,10 +122,7 @@ class User(Resource):
         comune = data["comune"]
 
         # Check if the user already exists in the database using EXISTS keyword
-        user_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex",
-            params=(email,),
-        )["ex"]
+        user_exists: bool = User.query.filter_by(email=email).count() > 0
         if user_exists:
             return create_response(
             message={"error": "user with provided email already exists"},
@@ -143,10 +133,9 @@ class User(Resource):
         hashed_password = hash_password(password)
 
         # Insert the new user into the database
-        execute_query(
-            query="INSERT INTO utenti (email, password, comune) VALUES (%s, %s, %s)",
-            params=(email, hashed_password, comune),
-        )
+        new_user = User(email=email, password=hashed_password, comune=comune)
+        db.session.add(new_user)
+        db.session.commit()
 
         # Log the creation
         log(
@@ -181,27 +170,20 @@ class User(Resource):
         password = data.get("password")
         comune = data.get("comune")
 
-        # Check if the user exists in the database using EXISTS keyword
-        user_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM utenti WHERE email = %s) AS ex",
-            params=(email,),
-        )["ex"]
-        if not user_exists:
+        # Check if the user exists in the database using ORM
+        user = User.query.filter_by(email=email).first()
+        if not user:
             return create_response(
-            message={"error": "user not found"},
-            status_code=STATUS_CODES["not_found"],
+                message={"error": "user not found"},
+                status_code=STATUS_CODES["not_found"],
             )
 
-        # Build the update query based on provided fields
-        update_query, params = build_update_query_from_filters(
-            table_name="utenti",
-            data=data,
-            pk_column="email",
-            pk_value=email,
-        )
-
-        # Execute the update query
-        execute_query(query=update_query, params=params)
+        # Update fields if provided
+        if password:
+            user.password = hash_password(password)
+        if comune:
+            user.comune = comune
+        db.session.commit()
 
         # Log the update
         log(
@@ -223,17 +205,17 @@ class User(Resource):
         Delete a user from the database by its email.
         """
 
-        # Execute the delete query
-        _, rows_affected = execute_query(
-            query="DELETE FROM utenti WHERE email = %s",
-            params=(email,),
-        )
+        user = User.query.filter_by(email=email).first()
 
-        if rows_affected == 0:
+        if user is None:
             return create_response(
                 message={"error": "user not found with provided email"},
                 status_code=STATUS_CODES["not_found"],
             )
+
+        # Execute the delete query
+        db.session.delete(user)
+        db.session.commit()
 
         # Log the deletion
         log(

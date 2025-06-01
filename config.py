@@ -88,11 +88,16 @@ JWT_TOKEN_LOCATION = [
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=10)  # Refresh token valid duration
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=3)  # Access token valid duration
 # | Database configuration
-DB_HOST: str = "localhost"
-DB_NAME: str = "idranjia"
-DB_USER: str = "root"
-DB_PASSWORD: str = ""
-CONNECTION_POOL_SIZE: int = 20  # The maximum number of connections in the pool
+DB_HOST = "localhost"
+DB_NAME = "idranjia"
+DB_USER = "postgres"
+DB_PASSWORD = "postgres"  # Default password for PostgreSQL, change in production
+DB_PORT = "5432"
+
+SQLALCHEMY_DATABASE_URI = (
+    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+)
+SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
 # Miscellaneous settings

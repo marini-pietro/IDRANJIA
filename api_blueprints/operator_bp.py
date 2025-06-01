@@ -8,17 +8,15 @@ from marshmallow import fields, ValidationError
 import re
 from .blueprints_utils import (
     check_authorization,
-    fetchone_query,
-    execute_query,
     log,
     create_response,
     get_hateos_location_string,
-    build_update_query_from_filters,
     handle_options_request,
 )
 from config import (
     STATUS_CODES,
 )
+from models import db, Operator
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -39,7 +37,7 @@ class OperatorSchema(ma.Schema):
 operator_schema = OperatorSchema()
 
 
-class Operator(Resource):
+class OperatorResource(Resource):
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>", f"/{BP_NAME}/<string:CF>"]
 
@@ -57,9 +55,7 @@ class Operator(Resource):
             )
 
         # Get the data
-        operator: Dict[str, Any] = fetchone_query(
-            "SELECT CF, nome, cognome FROM operatori WHERE id = %s", (id_,)
-        )
+        operator: Operator = Operator.query.filter_by(id=id_).first()
 
         # Check if the result is empty
         if operator is None:
@@ -77,7 +73,7 @@ class Operator(Resource):
         )
 
         # Return the operator as a JSON response
-        return create_response(message=operator, 
+        return create_response(message=operator_schema.dump(operator), 
                                status_code=STATUS_CODES["ok"])
 
     @jwt_required()
@@ -98,26 +94,25 @@ class Operator(Resource):
         name = data["nome"]
         surname = data["cognome"]
 
-        # Check if the operator already exists using EXISTS keyword
-        operator_exists: bool = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM operatori WHERE CF = %s) AS ex", params=(cf,)
-        )["ex"]
-        if not operator_exists:
+        # Check if the operator already exists
+        operator_exists: Operator = Operator.query.filter_by(CF=cf).first()
+        if operator_exists:
             return create_response(
             message={"error": "operator already exists."},
             status_code=STATUS_CODES["bad_request"],
             )
 
-        # Insert the new operator into the database
-        lastrowid = execute_query(
-            "INSERT INTO operatori (CF, nome, cognome) VALUES (%s, %s, %s)",
-            (cf, name, surname),
-        )
+        # Create a new operator instance
+        new_operator = Operator(CF=cf, nome=name, cognome=surname)
+
+        # Add and commit the new operator to the database
+        db.session.add(new_operator)
+        db.session.commit()
 
         # Log the action
         log(
             type="info",
-            message=f"User {identity} created operator with id {lastrowid}",
+            message=f"User {identity} created operator with id {new_operator.id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -126,7 +121,7 @@ class Operator(Resource):
         return create_response(
             message={
                 "outcome": "operator successfully created",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=lastrowid),
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_operator.id),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -156,11 +151,9 @@ class Operator(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check that the operator exists using EXISTS keyword
-        operator_exists = fetchone_query(
-            query="SELECT EXISTS(SELECT 1 FROM operatori WHERE id = %s) AS ex", params=(id_,)
-        )["ex"]
-        if not operator_exists:
+        # Check that the operator exists
+        operator: Operator = Operator.query.filter_by(id=id_).first()
+        if operator is None:
             return create_response(
             message={"error": "no resource found with specified id"},
             status_code=STATUS_CODES["not_found"],
@@ -174,16 +167,13 @@ class Operator(Resource):
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
-        # Build the update query
-        query, params = build_update_query_from_filters(
-            data=data,
-            table_name="operatori",
-            pk_column="CF",
-            pk_value=cf,
-        )
+        # Update the operator's attributes
+        operator.CF = cf or operator.CF
+        operator.nome = nome or operator.nome
+        operator.cognome = cognome or operator.cognome
 
-        # Execute the update query
-        execute_query(query=query, params=params)
+        # Commit the changes to the database
+        db.session.commit()
 
         # Return the response
         return create_response(
@@ -207,13 +197,9 @@ class Operator(Resource):
             status_code=STATUS_CODES["bad_request"],
             )
 
-        # Execute the query
-        _, rows_affected = execute_query(
-            query="DELETE FROM operatori WHERE CF = %s", params=(CF,)
-        )
-
-        # Check if any rows were affected
-        if rows_affected == 0:
+        # Check if the operator exists
+        operator: Operator = Operator.query.filter_by(CF=CF).first()
+        if operator is None:
             return create_response(
                 message={"error": "no resource found with specified cf"},
                 status_code=STATUS_CODES["not_found"],
@@ -222,10 +208,14 @@ class Operator(Resource):
         # Log the action
         log(
             type="info",
-            message=f"User {identity} deleted opearator with cf {CF}",
+            message=f"User {identity} deleted operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
+
+        # Delete the operator
+        db.session.delete(operator)
+        db.session.commit()
 
         # Return the response
         return create_response(
@@ -242,4 +232,4 @@ class Operator(Resource):
         return handle_options_request(resource_class=self)
 
 
-api.add_resource(Operator, *Operator.ENDPOINT_PATHS)
+api.add_resource(OperatorResource, *OperatorResource.ENDPOINT_PATHS)
