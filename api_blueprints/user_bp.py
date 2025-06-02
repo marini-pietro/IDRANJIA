@@ -10,7 +10,6 @@ from requests.exceptions import RequestException
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 
 from config import (
@@ -20,13 +19,13 @@ from config import (
     LOGIN_AVAILABLE_THROUGH_API,
     AUTH_SERVER_SSL,
 )
+from api_server import ma
 
 from .blueprints_utils import (
     check_authorization,
     log,
     create_response,
     handle_options_request,
-    check_column_existence,
     get_hateos_location_string,
 )
 from models import db, User  # Import User model for ORM
@@ -38,14 +37,14 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 user_bp = Blueprint(BP_NAME, __name__)
 api = Api(user_bp)
 
-# Initialize Marshmallow
-ma = Marshmallow()
-
 # Define schemas
 class UserSchema(ma.Schema):
     email = fields.Email(required=True)
-    password = fields.String(required=True)
     comune = fields.String(required=True)
+    nome = fields.String(required=True)
+    cognome = fields.String(required=True)
+    admin = fields.Boolean(required=True)
+    password = fields.String(required=True)
 
 user_schema = UserSchema()
 
@@ -67,7 +66,7 @@ def hash_password(password: str) -> str:
     return f"{base64.urlsafe_b64encode(salt).decode('utf-8')}:{hashed_password.decode('utf-8')}"
 
 
-class User(Resource):
+class UserResource(Resource):
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<string:email>"]
 
@@ -91,14 +90,20 @@ class User(Resource):
         # Log the retrieval
         log(
             log_type="info",
-            message=f"User {identity} retrieved user {email} data",
+            message=f"UserResource {identity} retrieved user {email} data",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return user data as JSON response
         return create_response(
-            message=user,
+            message={
+                "email": user.email,
+                "comune": user.comune,
+                "nome": user.nome,
+                "cognome": user.cognome,
+                "admin": user.admin
+            },
             status_code=STATUS_CODES["OK"],
         )
 
@@ -120,27 +125,30 @@ class User(Resource):
         email = data["email"]
         password = data["password"]
         comune = data["comune"]
+        nome = data["nome"]
+        cognome = data["cognome"]
+        admin = data.get("admin", False)  # Default to False if not provided
 
         # Check if the user already exists in the database using EXISTS keyword
         user_exists: bool = User.query.filter_by(email=email).count() > 0
         if user_exists:
             return create_response(
-            message={"error": "user with provided email already exists"},
-            status_code=STATUS_CODES["conflict"],
+                message={"error": "user with provided email already exists"},
+                status_code=STATUS_CODES["conflict"],
             )
 
         # Hash the password
         hashed_password = hash_password(password)
 
         # Insert the new user into the database
-        new_user = User(email=email, password=hashed_password, comune=comune)
+        new_user = User(email=email, password=hashed_password, comune=comune, nome=nome, cognome=cognome, admin=admin)
         db.session.add(new_user)
         db.session.commit()
 
         # Log the creation
         log(
             log_type="info",
-            message=f"User {identity} created user {email}",
+            message=f"UserResource {identity} created user {email}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -188,7 +196,7 @@ class User(Resource):
         # Log the update
         log(
             log_type="info",
-            message=f"User {identity} updated user {email}",
+            message=f"UserResource {identity} updated user {email}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -220,7 +228,7 @@ class User(Resource):
         # Log the deletion
         log(
             log_type="info",
-            message=f"User {email} deleted user {identity}",
+            message=f"UserResource {email} deleted user {identity}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -247,9 +255,9 @@ user_login_schema = UserLoginSchema()
 
 class UserLogin(Resource):
     """
-    User login resource for managing user authentication.
+    UserResource login resource for managing user authentication.
     This class handles the following HTTP methods:
-    - POST: User login
+    - POST: UserResource login
     - OPTIONS: Get allowed HTTP methods for this endpoint
     """
 
@@ -257,7 +265,7 @@ class UserLogin(Resource):
 
     def post(self) -> Response:
         """
-        User login endpoint.
+        UserResource login endpoint.
         The request body must be a JSON object with application/json content type.
         """
 
@@ -371,5 +379,5 @@ class UserLogin(Resource):
         return handle_options_request(resource_class=self)
 
 
-api.add_resource(User, *User.ENDPOINT_PATHS)
+api.add_resource(UserResource, *UserResource.ENDPOINT_PATHS)
 api.add_resource(UserLogin, *UserLogin.ENDPOINT_PATHS)

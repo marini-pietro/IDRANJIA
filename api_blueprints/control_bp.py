@@ -3,7 +3,6 @@ from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
-from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 from .blueprints_utils import (
     check_authorization,
@@ -12,6 +11,7 @@ from .blueprints_utils import (
     get_hateos_location_string,
     handle_options_request,
 )
+from api_server import ma
 from config import (
     STATUS_CODES,
 )
@@ -23,9 +23,6 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 # Create the blueprint and API
 control_bp = Blueprint(BP_NAME, __name__)
 api = Api(control_bp)
-
-# Initialize Marshmallow
-ma = Marshmallow()
 
 # Define schemas
 class ControlSchema(ma.Schema):
@@ -51,7 +48,7 @@ class ControlResource(Resource):
         if id_ <= 0:
             return create_response(
                 message={"error": "control id must be positive integer."},
-                status_code=STATUS_CODES["BAD_REQUEST"],
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Get the data

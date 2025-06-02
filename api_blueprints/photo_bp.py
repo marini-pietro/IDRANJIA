@@ -12,13 +12,11 @@ from .blueprints_utils import (
     handle_options_request,
     get_hateos_location_string,
 )
+from api_server import ma
 from config import (
     STATUS_CODES,
 )
 from models import db, Photo
-
-# Initialize Marshmallow
-ma = Marshmallow()
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -32,7 +30,7 @@ api = Api(photo_bp)
 class PhotoSchema(ma.Schema):
     id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
     posizione = fields.String(required=True)
-    data = fields.String(required=True)
+    data = fields.Date(required=True)
 
 photo_schema = PhotoSchema()
 

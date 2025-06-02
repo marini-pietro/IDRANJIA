@@ -102,7 +102,12 @@ def start_syslog_server(host, port):
     Start a syslog server that listens for messages over UDP.
     """
     syslog_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    syslog_socket.bind((host, port))
+    try:
+        syslog_socket.bind((host, port))
+    except OSError as e:
+        print(f"Failed to bind UDP socket on {host}:{port}: {e}")
+        print("Is another instance of the log server already running or is the port in use?")
+        return
     print(f"Syslog server listening on {host}:{port}")
 
     try:

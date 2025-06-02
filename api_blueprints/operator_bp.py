@@ -3,7 +3,6 @@ from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
-from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 import re
 from .blueprints_utils import (
@@ -13,6 +12,7 @@ from .blueprints_utils import (
     get_hateos_location_string,
     handle_options_request,
 )
+from api_server import ma
 from config import (
     STATUS_CODES,
 )
@@ -25,9 +25,6 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 operator_bp = Blueprint(BP_NAME, __name__)
 api = Api(operator_bp)
 
-# Initialize Marshmallow
-ma = Marshmallow()
-
 # Define schemas
 class OperatorSchema(ma.Schema):
     CF = fields.String(required=True)
@@ -39,35 +36,35 @@ operator_schema = OperatorSchema()
 
 class OperatorResource(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>", f"/{BP_NAME}/<string:CF>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<string:CF>"]
 
     @jwt_required()
-    def get(self, id_, identity) -> Response:
+    def get(self, CF, identity) -> Response:
         """
         Get the information of an operator from the database.
         """
 
-        # Validate the id_
-        if id_ < 0:
+        # Validate the CF
+        if not isinstance(CF, str) or not re.match(r"^[A-Z0-9]{16}$", CF):
             return create_response(
-                message={"error": "id must be a positive integer"},
+                message={"error": "CF must be a 16-character alphanumeric string."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Get the data
-        operator: Operator = Operator.query.filter_by(id=id_).first()
+        operator: Operator = Operator.query.filter_by(CF=CF).first()
 
         # Check if the result is empty
         if operator is None:
             return create_response(
-                message={"error": "no resource found with specified id"},
+                message={"error": "no resource found with specified cf"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Log the action
         log(
             type="info",
-            message=f"User {identity} fetched operator with id {id_}",
+            message=f"User {identity} fetched operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -127,9 +124,9 @@ class OperatorResource(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_, identity) -> Response:
+    def patch(self, CF, identity) -> Response:
         """
-        Update an operator in the database by its ID.
+        Update an operator in the database by its CF.
         """
         try:
             # Validate and deserialize input
@@ -144,25 +141,25 @@ class OperatorResource(Resource):
         nome = data.get("nome")
         cognome = data.get("cognome")
 
-        # Validate the id
-        if id_ < 0:
+        # Validate the CF
+        if not isinstance(CF, str) or not re.match(r"^[A-Z0-9]{16}$", CF):
             return create_response(
-                message={"error": "id must be a positive integer"},
+                message={"error": "CF must be a 16-character alphanumeric string."},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Check that the operator exists
-        operator: Operator = Operator.query.filter_by(id=id_).first()
+        operator: Operator = Operator.query.filter_by(CF=CF).first()
         if operator is None:
             return create_response(
-            message={"error": "no resource found with specified id"},
+            message={"error": "no resource found with specified cf"},
             status_code=STATUS_CODES["not_found"],
             )
 
         # Log the action
         log(
             type="info",
-            message=f"User {identity} updated operator with id {id_}",
+            message=f"User {identity} updated operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
@@ -179,7 +176,7 @@ class OperatorResource(Resource):
         return create_response(
             message={
                 "outcome": "successfully updated operator",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=CF),
             },
             status_code=STATUS_CODES["ok"],
         )

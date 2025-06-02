@@ -6,7 +6,7 @@ BEGIN;
 CREATE TYPE tipo_controllo_enum AS ENUM ('periodico');
 CREATE TYPE stato_idrante_enum AS ENUM ('utilizzabile','non utilizzabile','tappi presenti','tappi assenti');
 CREATE TYPE tipo_idrante_enum AS ENUM ('a','b');
-CREATE TYPE accessibilita_enum AS ENUM ('strada stretta','fruibile da autobotte','privato ma accessibile');
+CREATE TYPE accessibilità_enum AS ENUM ('strada stretta','fruibile da autobotte','privato ma accessibile');
 
 -- Table: controlli
 CREATE TABLE controlli (
@@ -42,7 +42,7 @@ CREATE TABLE idranti (
   via VARCHAR(255) NOT NULL,
   area_geo VARCHAR(255) NOT NULL,
   tipo tipo_idrante_enum NOT NULL,
-  accessibilita accessibilita_enum NOT NULL,
+  accessibilità accessibilità_enum NOT NULL,
   email_ins VARCHAR(255) NOT NULL
 );
 

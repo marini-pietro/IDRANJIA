@@ -19,7 +19,6 @@ from flask_jwt_extended import (
 )
 from api_blueprints.blueprints_utils import (
     log,
-    fetchone_query,
     is_rate_limited,
 )
 from config import (
@@ -37,10 +36,17 @@ from config import (
     AUTH_SERVER_SSL_CERT,
     AUTH_SERVER_SSL_KEY,
     SQL_PATTERN,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
 )
+from models import db, User  # Import db as well
 
 # Initialize Flask app
 auth_api = Flask(__name__)
+
+# Add SQLAlchemy configuration
+auth_api.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+auth_api.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
 
 # Check JWT secret key length
 PASSWORD_NUM_BITS = len(JWT_SECRET_KEY.encode("utf-8")) * 8
@@ -56,6 +62,9 @@ auth_api.config["JWT_REFRESH_TOKEN_EXPIRES"] = JWT_REFRESH_TOKEN_EXPIRES
 auth_api.config["JWT_ALGORITHM"] = JWT_ALGORITHM
 
 jwt = JWTManager(auth_api)
+
+# Initialize SQLAlchemy with the Flask app
+db.init_app(auth_api)
 
 
 def verify_password(stored_password: str, provided_password: str) -> bool:
@@ -173,12 +182,7 @@ def login():
     password: str = data.get("password")
 
     # Query the database to retrieve the user's hashed password and role
-    user: Dict[str, Any] = fetchone_query(
-        "SELECT email_utente, password, ruolo "
-        "FROM utenti "
-        "WHERE email_utente = %s",
-        (email,),
-    )
+    user = User.query.filter_by(email=email).first()
 
     if user:
         # Verify the provided password against the stored hashed password

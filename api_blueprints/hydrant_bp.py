@@ -10,13 +10,13 @@ from .blueprints_utils import (
     handle_options_request,
     get_hateos_location_string,
 )
+from api_server import ma
 from config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
     API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
-from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
 from models import db, Hydrant, User
 
@@ -27,9 +27,6 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 hydrant_bp = Blueprint(BP_NAME, __name__)
 api = Api(hydrant_bp)
 
-# Initialize Marshmallow
-ma = Marshmallow(hydrant_bp)
-
 # Define schemas
 class HydrantSchema(ma.Schema):
     stato = fields.String(required=True)
@@ -39,7 +36,7 @@ class HydrantSchema(ma.Schema):
     via = fields.String(required=True)
     area_geo = fields.String(required=True)
     tipo = fields.String(required=True)
-    accessibilità = fields.String(required=True)
+    accessibilità = fields.String(required=True)  # fixed spelling
 
 
 hydrant_schema = HydrantSchema()

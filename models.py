@@ -12,35 +12,35 @@ class Hydrant(db.Model):
     via = db.Column(db.String, nullable=False)
     area_geo = db.Column(db.String, nullable=False)
     tipo = db.Column(db.String, nullable=False)
-    accessibilita = db.Column(db.String, nullable=False)
+    accessibilità = db.Column(db.String, nullable=False)
     email_ins = db.Column(db.String, nullable=False)
 
 class User(db.Model):
     __tablename__ = "utenti"
     email = db.Column(db.String, primary_key=True)
-    password = db.Column(db.String, nullable=False)
     comune = db.Column(db.String, nullable=False)
+    nome = db.Column(db.String, nullable=False)
+    cognome = db.Column(db.String, nullable=False)
+    password = db.Column(db.String, nullable=False)
+    admin = db.Column(db.Boolean, nullable=False)
 
 class Operator(db.Model):
     __tablename__ = "operatori"
-    id = db.Column(db.Integer, primary_key=True)
-    CF = db.Column(db.String, unique=True, nullable=False)
+    CF = db.Column(db.String(16), primary_key=True)
     nome = db.Column(db.String, nullable=False)
     cognome = db.Column(db.String, nullable=False)
 
 class Photo(db.Model):
     __tablename__ = "foto"
-    id = db.Column(db.Integer, primary_key=True)
+    id_foto = db.Column(db.Integer, primary_key=True)
+    data = db.Column(db.Date, nullable=False)
     id_idrante = db.Column(db.Integer, db.ForeignKey('idranti.id'), nullable=False)
     posizione = db.Column(db.String, nullable=False)
-    data = db.Column(db.String, nullable=False)
 
 class Control(db.Model):
     __tablename__ = "controlli"
-    id = db.Column(db.Integer, primary_key=True)
+    id_controllo = db.Column(db.Integer, primary_key=True)
+    data = db.Column(db.Date, nullable=False)
     tipo = db.Column(db.String, nullable=False)
     esito = db.Column(db.Boolean, nullable=False)
-    data = db.Column(db.Date, nullable=False)
     id_idrante = db.Column(db.Integer, db.ForeignKey('idranti.id'), nullable=False)
-
-# Add other models as needed, following the same pattern.
