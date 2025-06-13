@@ -81,15 +81,40 @@ class UserResource(Resource):
           - API Server (api_server)
         summary: Get user by email
         description: Retrieve user information from the database by email.
+        operationId: getUserByEmail
+        security:
+          - bearerAuth: []
         parameters:
           - name: email
             in: path
             required: true
+            description: The unique email address of the user to retrieve.
             schema:
               type: string
+              example: user@example.com
         responses:
           200:
             description: User found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    email:
+                      type: string
+                      example: user@example.com
+                    comune:
+                      type: string
+                      example: Milano
+                    nome:
+                      type: string
+                      example: Mario
+                    cognome:
+                      type: string
+                      example: Rossi
+                    admin:
+                      type: boolean
+                      example: false
           404:
             description: User not found
         """
@@ -132,21 +157,50 @@ class UserResource(Resource):
           - API Server (api_server)
         summary: Update user by email
         description: Update user information in the database by email. Allows partial updates.
+        operationId: updateUserByEmail
+        security:
+          - bearerAuth: []
         parameters:
           - name: email
             in: path
             required: true
+            description: The unique email address of the user to update.
             schema:
               type: string
+              example: user@example.com
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                type: object
+                properties:
+                  comune:
+                    type: string
+                    example: Milano
+                  nome:
+                    type: string
+                    example: Mario
+                  cognome:
+                    type: string
+                    example: Rossi
+                  admin:
+                    type: boolean
+                    example: false
+                  password:
+                    type: string
+                    example: newpassword
         responses:
           200:
             description: User updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: string
+                      example: User user@example.com updated
           400:
             description: Invalid input
           404:
@@ -203,15 +257,28 @@ class UserResource(Resource):
           - API Server (api_server)
         summary: Delete user by email
         description: Delete a user from the database by email.
+        operationId: deleteUserByEmail
+        security:
+          - bearerAuth: []
         parameters:
           - name: email
             in: path
             required: true
+            description: The unique email address of the user to delete.
             schema:
               type: string
+              example: user@example.com
         responses:
           200:
             description: User deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: string
+                      example: User user@example.com deleted
           404:
             description: User not found
         """
@@ -249,6 +316,9 @@ class UserResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for user resource
         description: Returns the allowed HTTP methods for the user resource endpoint.
+        operationId: optionsUser
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -274,15 +344,48 @@ class UserPostResource(Resource):
           - API Server (api_server)
         summary: Create a new user
         description: Create a new user in the database.
+        operationId: createUser
+        security:
+          - bearerAuth: []
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                type: object
+                properties:
+                  email:
+                    type: string
+                    example: user@example.com
+                  password:
+                    type: string
+                    example: mypassword
+                  comune:
+                    type: string
+                    example: Milano
+                  nome:
+                    type: string
+                    example: Mario
+                  cognome:
+                    type: string
+                    example: Rossi
+                  admin:
+                    type: boolean
+                    example: false
         responses:
           201:
             description: User created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: User user@example.com created
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/user/user@example.com
           400:
             description: Invalid input
           409:
@@ -352,6 +455,9 @@ class UserPostResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for user resource
         description: Returns the allowed HTTP methods for the user resource endpoint.
+        operationId: optionsUserPost
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -384,15 +490,34 @@ class UserLogin(Resource):
           - API Server (api_server)
         summary: User login
         description: Authenticate a user and return a JWT token.
+        operationId: userLogin
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserLogin'
+                type: object
+                properties:
+                  email:
+                    type: string
+                    example: user@example.com
+                  password:
+                    type: string
+                    example: mypassword
         responses:
           200:
             description: Login successful
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    access_token:
+                      type: string
+                      example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+                    refresh_token:
+                      type: string
+                      example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
           400:
             description: Invalid input
           401:

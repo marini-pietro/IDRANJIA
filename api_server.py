@@ -354,7 +354,23 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
 @main_api.route(f"/api/{API_VERSION}/health", methods=["GET"])
 def health_check():
     """
-    Health check endpoint to verify the server is running.
+    ---
+    tags:
+      - API Server (api_server)
+    summary: Health Check
+    description: Returns the status of the API server.
+    operationId: api_health_check
+    responses:
+      200:
+        description: Server is running and healthy.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: ok
     """
     return jsonify({"status": "ok"}), STATUS_CODES["ok"]
 
@@ -397,8 +413,5 @@ if __name__ == "__main__":
     log(
         log_type="info",
         message="API server started",
-        origin_name=API_SERVER_NAME_IN_LOG,
-        origin_host=API_SERVER_HOST,
-        message_id="UserAction",
         structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
     )

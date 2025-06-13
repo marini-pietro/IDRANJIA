@@ -48,15 +48,34 @@ class OperatorResource(Resource):
           - API Server (api_server)
         summary: Get operator by CF
         description: Retrieve operator information from the database by CF (16-character alphanumeric string).
+        operationId: getOperatorByCF
+        security:
+          - bearerAuth: []
         parameters:
           - name: CF
             in: path
             required: true
+            description: The unique identifier (CF) of the operator to retrieve.
             schema:
               type: string
+              example: RSSMRA80A01F205X
         responses:
           200:
             description: Operator found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    CF:
+                      type: string
+                      example: RSSMRA80A01F205X
+                    nome:
+                      type: string
+                      example: Mario
+                    cognome:
+                      type: string
+                      example: Rossi
           400:
             description: Invalid CF
           404:
@@ -101,21 +120,47 @@ class OperatorResource(Resource):
           - API Server (api_server)
         summary: Update an operator by CF
         description: Update an existing operator record by CF. Allows partial updates.
+        operationId: updateOperatorByCF
+        security:
+          - bearerAuth: []
         parameters:
           - name: CF
             in: path
             required: true
+            description: The unique identifier (CF) of the operator to update.
             schema:
               type: string
+              example: RSSMRA80A01F205X
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Operator'
+                type: object
+                properties:
+                  CF:
+                    type: string
+                    example: RSSMRA80A01F205X
+                  nome:
+                    type: string
+                    example: Mario
+                  cognome:
+                    type: string
+                    example: Rossi
         responses:
           200:
             description: Operator updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully updated operator
+                    location:
+                      type: string
+                      example: /operator/RSSMRA80A01F205X
           400:
             description: Invalid input
           404:
@@ -184,15 +229,28 @@ class OperatorResource(Resource):
           - API Server (api_server)
         summary: Delete an operator by CF
         description: Delete an operator record from the database by CF.
+        operationId: deleteOperatorByCF
+        security:
+          - bearerAuth: []
         parameters:
           - name: CF
             in: path
             required: true
+            description: The unique identifier (CF) of the operator to delete.
             schema:
               type: string
+              example: RSSMRA80A01F205X
         responses:
           200:
             description: Operator deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully deleted operator
           400:
             description: Invalid CF
           404:
@@ -240,6 +298,9 @@ class OperatorResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for operator resource
         description: Returns the allowed HTTP methods for the operator resource endpoint.
+        operationId: optionsOperator
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -260,15 +321,39 @@ class OperatorPostResource(Resource):
           - API Server (api_server)
         summary: Create a new operator
         description: Create a new operator record in the database.
+        operationId: createOperator
+        security:
+          - bearerAuth: []
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Operator'
+                type: object
+                properties:
+                  CF:
+                    type: string
+                    example: RSSMRA80A01F205X
+                  nome:
+                    type: string
+                    example: Mario
+                  cognome:
+                    type: string
+                    example: Rossi
         responses:
           201:
             description: Operator created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: operator successfully created
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/operator/RSSMRA80A01F205X
           400:
             description: Invalid input
         """
@@ -328,6 +413,9 @@ class OperatorPostResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for operator resource
         description: Returns the allowed HTTP methods for the operator resource endpoint.
+        operationId: optionsOperatorPost
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned

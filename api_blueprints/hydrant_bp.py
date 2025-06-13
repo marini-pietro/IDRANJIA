@@ -66,15 +66,52 @@ class HydrantResource(Resource):
           - API Server (api_server)
         summary: Get hydrant by ID
         description: Retrieve hydrant data from the database by its integer ID.
+        operationId: getHydrantById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the hydrant to retrieve.
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Hydrant found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    stato:
+                      type: string
+                      example: "attivo"
+                    latitudine:
+                      type: number
+                      example: 45.4642
+                    longitudine:
+                      type: number
+                      example: 9.19
+                    comune:
+                      type: string
+                      example: "Milano"
+                    via:
+                      type: string
+                      example: "Via Roma"
+                    area_geo:
+                      type: string
+                      example: "Centro"
+                    tipo:
+                      type: string
+                      example: "idrante"
+                    accessibilità:
+                      type: string
+                      example: "pubblica"
           400:
             description: Invalid ID
           404:
@@ -118,21 +155,62 @@ class HydrantResource(Resource):
           - API Server (api_server)
         summary: Update a hydrant by ID
         description: Update an existing hydrant record by its integer ID. Allows partial updates.
+        operationId: updateHydrantById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the hydrant to update.
             schema:
               type: integer
+              example: 1
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Hydrant'
+                type: object
+                properties:
+                  stato:
+                    type: string
+                    example: "attivo"
+                  latitudine:
+                    type: number
+                    example: 45.4642
+                  longitudine:
+                    type: number
+                    example: 9.19
+                  comune:
+                    type: string
+                    example: "Milano"
+                  via:
+                    type: string
+                    example: "Via Roma"
+                  area_geo:
+                    type: string
+                    example: "Centro"
+                  tipo:
+                    type: string
+                    example: "idrante"
+                  accessibilità:
+                    type: string
+                    example: "pubblica"
         responses:
           200:
             description: Hydrant updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully updated hydrant
+                    location:
+                      type: string
+                      example: /hydrant/1
           400:
             description: Invalid input or user not found
           404:
@@ -206,15 +284,28 @@ class HydrantResource(Resource):
           - API Server (api_server)
         summary: Delete a hydrant by ID
         description: Delete a hydrant record from the database by its integer ID.
+        operationId: deleteHydrantById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the hydrant to delete.
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Hydrant deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully deleted hydrant
           400:
             description: Invalid ID
           404:
@@ -261,6 +352,9 @@ class HydrantResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for hydrant resource
         description: Returns the allowed HTTP methods for the hydrant resource endpoint.
+        operationId: optionsHydrant
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -285,15 +379,54 @@ class HydrantPostResource(Resource):
           - API Server (api_server)
         summary: Create a new hydrant
         description: Create a new hydrant record in the database.
+        operationId: createHydrant
+        security:
+          - bearerAuth: []
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Hydrant'
+                type: object
+                properties:
+                  stato:
+                    type: string
+                    example: "attivo"
+                  latitudine:
+                    type: number
+                    example: 45.4642
+                  longitudine:
+                    type: number
+                    example: 9.19
+                  comune:
+                    type: string
+                    example: "Milano"
+                  via:
+                    type: string
+                    example: "Via Roma"
+                  area_geo:
+                    type: string
+                    example: "Centro"
+                  tipo:
+                    type: string
+                    example: "idrante"
+                  accessibilità:
+                    type: string
+                    example: "pubblica"
         responses:
           201:
             description: Hydrant created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully created new hydrant
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/hydrant/1
           400:
             description: Invalid input or user not found
         """
@@ -376,6 +509,9 @@ class HydrantPostResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for hydrant resource
         description: Returns the allowed HTTP methods for the hydrant resource endpoint.
+        operationId: optionsHydrantPost
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned

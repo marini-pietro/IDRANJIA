@@ -63,15 +63,33 @@ class PhotoResource(Resource):
           - API Server (api_server)
         summary: Get photos by hydrant ID
         description: Retrieve all photos associated with a hydrant by its integer ID.
+        operationId: getPhotosByHydrantId
+        security:
+          - bearerAuth: []
         parameters:
           - name: hydrant_id
             in: path
             required: true
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Photos found
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      posizione:
+                        type: string
+                        example: "foto/1.png"
+                      data:
+                        type: string
+                        format: date
+                        example: "2024-05-01"
           400:
             description: Invalid hydrant ID
           404:
@@ -128,21 +146,54 @@ class PhotoResource(Resource):
           - API Server (api_server)
         summary: Update a photo by ID
         description: Update an existing photo record by its integer ID. Allows partial updates.
+        operationId: updatePhotoById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the photo to update.
             schema:
               type: integer
+              example: 1
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Photo'
+                type: object
+                properties:
+                  id_idrante:
+                    type: integer
+                    example: 1
+                  posizione:
+                    type: string
+                    example: "foto/1.png"
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+              example:
+                id_idrante: 1
+                posizione: "foto/1.png"
+                data: "2024-05-01"
         responses:
           200:
             description: Photo updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully updated
+                    location:
+                      type: string
+                      example: /photo/1
+                example:
+                  outcome: photo successfully updated
           400:
             description: Invalid input
           404:
@@ -202,15 +253,27 @@ class PhotoResource(Resource):
           - API Server (api_server)
         summary: Delete a photo by ID
         description: Delete a photo record from the database by its integer ID.
+        operationId: deletePhotoById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Photo deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully deleted
           400:
             description: Invalid ID
           404:
@@ -259,6 +322,9 @@ class PhotoResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for photo resource
         description: Returns the allowed HTTP methods for the photo resource endpoint.
+        operationId: optionsPhoto
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -283,15 +349,40 @@ class PhotoPostResource(Resource):
           - API Server (api_server)
         summary: Create a new photo
         description: Create a new photo record associated with a hydrant.
+        operationId: createPhoto
+        security:
+          - bearerAuth: []
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Photo'
+                type: object
+                properties:
+                  id_idrante:
+                    type: integer
+                    example: 1
+                  posizione:
+                    type: string
+                    example: "foto/1.png"
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
         responses:
           201:
             description: Photo created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully created
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/photo/1
           400:
             description: Invalid input
           404:
@@ -366,6 +457,9 @@ class PhotoPostResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for photo resource
         description: Returns the allowed HTTP methods for the photo resource endpoint.
+        operationId: optionsPhotoPost
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned

@@ -143,8 +143,10 @@ def login():
               properties:
                 access_token:
                   type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
                 refresh_token:
                   type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
       400:
         description: Bad request (missing or invalid data)
       401:
@@ -240,8 +242,10 @@ def validate_token():
               properties:
                 identity:
                   type: string
+                  example: user@example.com
                 role:
                   type: string
+                  example: admin
       401:
         description: Invalid or expired token
     """
@@ -270,6 +274,7 @@ def refresh():
               properties:
                 access_token:
                   type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
       401:
         description: Invalid or expired refresh token
     """
@@ -285,6 +290,9 @@ def health_check():
     ---
     tags:
       - Health
+    summary: Health check endpoint
+    description: Returns a simple status message to indicate the server is healthy.
+    operationId: auth_health_check
     responses:
       200:
         description: Server is healthy

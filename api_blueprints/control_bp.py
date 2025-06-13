@@ -65,15 +65,41 @@ class ControlResource(Resource):
           - API Server (api_server)
         summary: Get a control row by ID
         description: Retrieve a control record from the database by its integer ID.
+        operationId: getControlById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the control to retrieve.
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Control record found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    id_controllo:
+                      type: integer
+                      example: 1
+                    tipo:
+                      type: string
+                      example: "manutenzione"
+                    esito:
+                      type: boolean
+                      example: true
+                    data:
+                      type: string
+                      format: date
+                      example: "2024-05-01"
+                    id_idrante:
+                      type: integer
+                      example: 2
           400:
             description: Invalid ID
           404:
@@ -120,21 +146,51 @@ class ControlResource(Resource):
           - API Server (api_server)
         summary: Update a control row by ID
         description: Update an existing control record by its integer ID. Allows partial updates.
+        operationId: updateControlById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the control to update.
             schema:
               type: integer
+              example: 1
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Control'
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "manutenzione"
+                  esito:
+                    type: boolean
+                    example: true
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+                  id_idrante:
+                    type: integer
+                    example: 2
         responses:
           200:
             description: Control updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully updated control
+                    location:
+                      type: string
+                      example: /control/1
           400:
             description: Invalid input
           404:
@@ -214,15 +270,28 @@ class ControlResource(Resource):
           - API Server (api_server)
         summary: Delete a control row by ID
         description: Delete a control record from the database by its integer ID.
+        operationId: deleteControlById
+        security:
+          - bearerAuth: []
         parameters:
           - name: id_
             in: path
             required: true
+            description: The unique identifier of the control to delete.
             schema:
               type: integer
+              example: 1
         responses:
           200:
             description: Control deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully deleted control
           400:
             description: Invalid ID
           404:
@@ -271,6 +340,9 @@ class ControlResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for control resource
         description: Returns the allowed HTTP methods for the control resource endpoint.
+        operationId: optionsControl
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
@@ -295,15 +367,43 @@ class ControlPostResource(Resource):
           - API Server (api_server)
         summary: Create a new control row
         description: Create a new control record in the database.
+        operationId: createControl
+        security:
+          - bearerAuth: []
         requestBody:
           required: true
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Control'
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "manutenzione"
+                  esito:
+                    type: boolean
+                    example: true
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+                  id_idrante:
+                    type: integer
+                    example: 2
         responses:
           201:
             description: Control created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully created new control
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/control/1
           400:
             description: Invalid input
           404:
@@ -371,6 +471,9 @@ class ControlPostResource(Resource):
           - API Server (api_server)
         summary: Get allowed HTTP methods for control resource
         description: Returns the allowed HTTP methods for the control resource endpoint.
+        operationId: optionsControlPost
+        security:
+          - bearerAuth: []
         responses:
           200:
             description: Allowed methods returned
