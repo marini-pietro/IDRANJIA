@@ -1,10 +1,14 @@
+"""
+Blueprint for managing hydrant photos.
+This module provides endpoints to create, read, update, and delete photos associated with hydrants.
+"""
+
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
-from flask_marshmallow import Marshmallow
 from marshmallow import fields, ValidationError
-from typing import Dict, Union, List, Any
+from typing import List
 from .blueprints_utils import (
     check_authorization,
     log,
@@ -16,7 +20,8 @@ from api_server import ma
 from config import (
     STATUS_CODES,
 )
-from models import db, Photo
+from models import db, Photo, Hydrant
+from sqlalchemy import exists
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -28,14 +33,25 @@ api = Api(photo_bp)
 
 # Marshmallow Schemas
 class PhotoSchema(ma.Schema):
+    """
+    Schema for validating and serializing photo data.
+    This schema defines the fields required for a photo associated with a hydrant.
+    """
+
     id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
     posizione = fields.String(required=True)
     data = fields.Date(required=True)
 
+
+# Create the schema instance
 photo_schema = PhotoSchema()
 
 
 class PhotoResource(Resource):
+    """
+    Photo resource for managing hydrant photos.
+    This class provides methods to create, read, update, and delete photos associated with hydrants.
+    """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
 
@@ -56,12 +72,12 @@ class PhotoResource(Resource):
         hydrant = Photo.query.filter_by(id=hydrant_id).first()
         if hydrant is None:
             return create_response(
-                message={"error": "hydrant not found"},
+                message={"error": "specified hydrant not found"},
                 status_code=STATUS_CODES["not_found"],
             )
 
         # Get the data
-        photos: List[Dict[str, Any]] = (
+        photos: List[Photo] = (
             Photo.query.filter_by(id_idrante=hydrant_id)
             .with_entities(Photo.posizione, Photo.data)
             .all()
@@ -76,14 +92,16 @@ class PhotoResource(Resource):
 
         # Log the action
         log(
-            type="info",
-            message=f"User {identity} fetched photos with hydrant id_ {hydrant_id}",
-            message_id="UserAction",
+            log_type="info",
+            message=f"User {identity} fetched photos with hydrant id {hydrant_id}",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the photos as a JSON response
-        return create_response(message=photos, status_code=STATUS_CODES["ok"])
+        return create_response(
+            message=[photo.to_dict() for photo in photos],
+            status_code=STATUS_CODES["ok"],
+        )
 
     @jwt_required()
     def post(self, identity) -> Response:
@@ -104,26 +122,27 @@ class PhotoResource(Resource):
         position = data["posizione"]
         date = data["data"]
 
-        # Check that hydrant exists
-        hydrant_exists = db.session.query(
-            db.session.query(Photo).filter_by(id_=hydrant_id).exists()
+        # Optimized check that hydrant exists (should check Hydrant, not Photo)
+        hydrant_exists: bool = db.session.query(
+            exists().where(Hydrant.id == hydrant_id)
         ).scalar()
         if not hydrant_exists:
             return create_response(
-            message={"error": "hydrant not found"},
-            status_code=STATUS_CODES["not_found"],
+                message={"error": "hydrant not found"},
+                status_code=STATUS_CODES["not_found"],
             )
 
         # Check if the photo already exists
-        photo_exists = db.session.query(
-            db.session.query(Photo).filter_by(
+        photo_exists: bool = (
+            Photo.query.filter_by(
                 id_idrante=hydrant_id, posizione=position, data=date
-            ).exists()
-        ).scalar()
+            ).first()
+            is not None
+        )
         if photo_exists:
             return create_response(
-            message={"error": "photo already exists."},
-            status_code=STATUS_CODES["bad_request"],
+                message={"error": "photo already exists."},
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Insert the new photo into the database
@@ -133,7 +152,7 @@ class PhotoResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} created photo with hydrant id_ {hydrant_id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
@@ -143,7 +162,9 @@ class PhotoResource(Resource):
         return create_response(
             message={
                 "outcome": "photo successfully created",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_photo.id_foto),
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=new_photo.id_foto
+                ),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -161,34 +182,30 @@ class PhotoResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check that the photo exists
-        photo_exists = db.session.query(
-            db.session.query(Photo).filter_by(id_foto=id_).exists()
-        ).scalar()
-        if not photo_exists:
+        photo = Photo.query.get(id_)
+        if photo is None:
             return create_response(
-            message={"error": "photo with specified id not found"},
-            status_code=STATUS_CODES["not_found"],
+                message={"error": "photo with specified id not found"},
+                status_code=STATUS_CODES["not_found"],
             )
 
         # Validate and deserialize input data
         try:
-            data = photo_schema.load(request.get_json())
+            # Allow partial updates
+            data = photo_schema.load(request.get_json(), partial=True)
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Update the photo in the database
-        photo = Photo.query.get(id_)
         for key, value in data.items():
             setattr(photo, key, value)
         db.session.commit()
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} updated photo with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
@@ -216,19 +233,22 @@ class PhotoResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Delete the photo from the database
         photo = Photo.query.get(id_)
         if photo is None:
             return create_response(
                 message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
             )
+
+        # Delete the photo
         db.session.delete(photo)
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} deleted photo with id_ {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
@@ -242,6 +262,12 @@ class PhotoResource(Resource):
 
     @jwt_required()
     def options(self) -> Response:
+        """
+        Handle OPTIONS request for CORS preflight.
+        This method is used to handle CORS preflight requests.
+        It allows the client to check what HTTP methods are allowed for this resource.
+        """
+
         return handle_options_request(resource_class=self)
 
 

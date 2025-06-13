@@ -25,11 +25,13 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 operator_bp = Blueprint(BP_NAME, __name__)
 api = Api(operator_bp)
 
+
 # Define schemas
 class OperatorSchema(ma.Schema):
     CF = fields.String(required=True)
     nome = fields.String(required=True)
     cognome = fields.String(required=True)
+
 
 operator_schema = OperatorSchema()
 
@@ -63,15 +65,16 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} fetched operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the operator as a JSON response
-        return create_response(message=operator_schema.dump(operator), 
-                               status_code=STATUS_CODES["ok"])
+        return create_response(
+            message=operator_schema.dump(operator), status_code=STATUS_CODES["ok"]
+        )
 
     @jwt_required()
     def post(self, identity) -> Response:
@@ -95,8 +98,8 @@ class OperatorResource(Resource):
         operator_exists: Operator = Operator.query.filter_by(CF=cf).first()
         if operator_exists:
             return create_response(
-            message={"error": "operator already exists."},
-            status_code=STATUS_CODES["bad_request"],
+                message={"error": "operator already exists."},
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Create a new operator instance
@@ -108,7 +111,7 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} created operator with id {new_operator.id}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
@@ -118,7 +121,9 @@ class OperatorResource(Resource):
         return create_response(
             message={
                 "outcome": "operator successfully created",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_operator.id),
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=new_operator.id
+                ),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -127,19 +132,16 @@ class OperatorResource(Resource):
     def patch(self, CF, identity) -> Response:
         """
         Update an operator in the database by its CF.
+        Allows partial updates; only provided fields will be updated.
         """
         try:
-            # Validate and deserialize input
-            data = operator_schema.load(request.get_json())
+            # Validate and deserialize input (all fields optional)
+            data = operator_schema.load(request.get_json(), partial=True)
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
-
-        cf = data.get("CF")
-        nome = data.get("nome")
-        cognome = data.get("cognome")
 
         # Validate the CF
         if not isinstance(CF, str) or not re.match(r"^[A-Z0-9]{16}$", CF):
@@ -152,22 +154,25 @@ class OperatorResource(Resource):
         operator: Operator = Operator.query.filter_by(CF=CF).first()
         if operator is None:
             return create_response(
-            message={"error": "no resource found with specified cf"},
-            status_code=STATUS_CODES["not_found"],
+                message={"error": "no resource found with specified cf"},
+                status_code=STATUS_CODES["not_found"],
             )
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} updated operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
-        # Update the operator's attributes
-        operator.CF = cf or operator.CF
-        operator.nome = nome or operator.nome
-        operator.cognome = cognome or operator.cognome
+        # Update only provided fields
+        if "CF" in data and data["CF"]:
+            operator.CF = data["CF"]
+        if "nome" in data and data["nome"]:
+            operator.nome = data["nome"]
+        if "cognome" in data and data["cognome"]:
+            operator.cognome = data["cognome"]
 
         # Commit the changes to the database
         db.session.commit()
@@ -176,7 +181,9 @@ class OperatorResource(Resource):
         return create_response(
             message={
                 "outcome": "successfully updated operator",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=CF),
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=operator.CF
+                ),
             },
             status_code=STATUS_CODES["ok"],
         )
@@ -190,8 +197,8 @@ class OperatorResource(Resource):
         # Validate the CF
         if not isinstance(CF, str) or not re.match(r"^[A-Z0-9]{16}$", CF):
             return create_response(
-            message={"error": "CF must be a 16-character alphanumeric string."},
-            status_code=STATUS_CODES["bad_request"],
+                message={"error": "CF must be a 16-character alphanumeric string."},
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the operator exists
@@ -204,7 +211,7 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} deleted operator with cf {CF}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",

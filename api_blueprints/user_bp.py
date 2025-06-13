@@ -37,6 +37,7 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 user_bp = Blueprint(BP_NAME, __name__)
 api = Api(user_bp)
 
+
 # Define schemas
 class UserSchema(ma.Schema):
     email = fields.Email(required=True)
@@ -46,22 +47,24 @@ class UserSchema(ma.Schema):
     admin = fields.Boolean(required=True)
     password = fields.String(required=True)
 
+
 user_schema = UserSchema()
+
 
 def hash_password(password: str) -> str:
     # Generate a random salt
     salt = os.urandom(16)
-    
+
     # Use PBKDF2 to hash the password
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
         iterations=100000,
-        backend=default_backend()
+        backend=default_backend(),
     )
-    hashed_password = base64.urlsafe_b64encode(kdf.derive(password.encode('utf-8')))
-    
+    hashed_password = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+
     # Store the salt and hashed password together
     return f"{base64.urlsafe_b64encode(salt).decode('utf-8')}:{hashed_password.decode('utf-8')}"
 
@@ -102,9 +105,9 @@ class UserResource(Resource):
                 "comune": user.comune,
                 "nome": user.nome,
                 "cognome": user.cognome,
-                "admin": user.admin
+                "admin": user.admin,
             },
-            status_code=STATUS_CODES["OK"],
+            status_code=STATUS_CODES["ok"],
         )
 
     @jwt_required()
@@ -141,7 +144,14 @@ class UserResource(Resource):
         hashed_password = hash_password(password)
 
         # Insert the new user into the database
-        new_user = User(email=email, password=hashed_password, comune=comune, nome=nome, cognome=cognome, admin=admin)
+        new_user = User(
+            email=email,
+            password=hashed_password,
+            comune=comune,
+            nome=nome,
+            cognome=cognome,
+            admin=admin,
+        )
         db.session.add(new_user)
         db.session.commit()
 
@@ -155,8 +165,10 @@ class UserResource(Resource):
 
         # Return a success response
         return create_response(
-            message={"outcome": f"User {email} created",
-                     "location": get_hateos_location_string(bp_name=BP_NAME, id_=email)},
+            message={
+                "outcome": f"User {email} created",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=email),
+            },
             status_code=STATUS_CODES["created"],
         )
 
@@ -167,16 +179,13 @@ class UserResource(Resource):
         The request body must be a JSON object with application/json content type.
         """
         try:
-            # Validate and deserialize input
-            data = user_schema.load(request.get_json())
+            # Allow partial updates
+            data = user_schema.load(request.get_json(), partial=True)
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
-
-        password = data.get("password")
-        comune = data.get("comune")
 
         # Check if the user exists in the database using ORM
         user = User.query.filter_by(email=email).first()
@@ -187,10 +196,16 @@ class UserResource(Resource):
             )
 
         # Update fields if provided
-        if password:
-            user.password = hash_password(password)
-        if comune:
-            user.comune = comune
+        if "password" in data and data["password"]:
+            user.password = hash_password(data["password"])
+        if "comune" in data and data["comune"]:
+            user.comune = data["comune"]
+        if "nome" in data and data["nome"]:
+            user.nome = data["nome"]
+        if "cognome" in data and data["cognome"]:
+            user.cognome = data["cognome"]
+        if "admin" in data:
+            user.admin = data["admin"]
         db.session.commit()
 
         # Log the update
@@ -204,7 +219,7 @@ class UserResource(Resource):
         # Return a success response
         return create_response(
             message={"success": f"User {email} updated"},
-            status_code=STATUS_CODES["OK"],
+            status_code=STATUS_CODES["ok"],
         )
 
     @jwt_required()
@@ -236,7 +251,7 @@ class UserResource(Resource):
         # Return a success response
         return create_response(
             message={"success": f"User {email} deleted"},
-            status_code=STATUS_CODES["OK"],
+            status_code=STATUS_CODES["ok"],
         )
 
     @jwt_required()
@@ -247,11 +262,14 @@ class UserResource(Resource):
         """
         return handle_options_request(resource_class=self)
 
+
 class UserLoginSchema(ma.Schema):
     email = fields.Email(required=True)
     password = fields.String(required=True)
 
+
 user_login_schema = UserLoginSchema()
+
 
 class UserLogin(Resource):
     """

@@ -60,21 +60,23 @@ def jwt_validation_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         # Extract the token from the Authorization header
+        token = None
         auth_header = request.headers.get("Authorization", None)
-        token = auth_header.replace("Bearer ", "")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "", 1)
 
         # If the token is not in the Authorization header, check the query string
-        if token is None:
-            token = request.args.get(JWT_QUERY_STRING_NAME, "")
+        if not token:
+            token = request.args.get(JWT_QUERY_STRING_NAME, None)
 
         # If the token is not in the query string, check the JSON body
-        if token is None:
+        if not token:
             json_body = request.get_json(silent=True)  # Safely get JSON body
             if json_body:  # Ensure it's not None
                 token = json_body.get(JWT_JSON_KEY, None)
 
         # Validate the token
-        if token is None:
+        if not token:
             return {"error": "missing token"}, STATUS_CODES["unauthorized"]
 
         # Initialize identity and role
@@ -92,16 +94,13 @@ def jwt_validation_required(func):
                 response: Response = requests_post(
                     f"{"https" if AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/validate",
                     headers={"Authorization": f"Bearer {token}"},
-                    timeout=5, # in seconds
+                    timeout=5,  # in seconds
                 )
-
-
 
                 # If the token is invalid, return a 401 Unauthorized response
                 if response.status_code != STATUS_CODES["ok"]:
                     return {"error": "Invalid token"}, STATUS_CODES["unauthorized"]
                 else:
-                # Extract the identity from the response JSON if valid
                     response_json = response.json()
                     identity = response_json.get("identity")
                     role = response_json.get("role")
@@ -116,7 +115,9 @@ def jwt_validation_required(func):
                     origin_name="JWTValidation",
                     origin_host=API_SERVER_HOST,
                 )
-                return {"error": "Login request timed out"}, STATUS_CODES["gateway_timeout"]
+                return {"error": "Login request timed out"}, STATUS_CODES[
+                    "gateway_timeout"
+                ]
 
             except RequestException as ex:
                 log(
@@ -125,7 +126,9 @@ def jwt_validation_required(func):
                     origin_name="JWTValidation",
                     origin_host=API_SERVER_HOST,
                 )
-                return {"error": "internal server error while validating token"}, STATUS_CODES["internal_error"]
+                return {
+                    "error": "internal server error while validating token"
+                }, STATUS_CODES["internal_error"]
 
         # Pass the extracted identity to the wrapped function
         # Only if the function accepts it (OPTIONS endpoint do not use it)
@@ -305,10 +308,14 @@ def log_worker():
             break
 
         # Extract log details
-        type_, message, origin_name, origin_host, message_id, structured_data = log_data
+        log_type, message, origin_name, origin_host, message_id, structured_data = (
+            log_data
+        )
 
         # Get the severity code for the log_type
-        severity = SYSLOG_SEVERITY_MAP.get(type_, 6)  # Default to 'info' if not found
+        severity = SYSLOG_SEVERITY_MAP.get(
+            log_type, 6
+        )  # Default to 'info' if not found
 
         # Format the syslog message with the correct priority
         priority = (1 * 8) + severity  # Assuming facility=1 (user-level messages)

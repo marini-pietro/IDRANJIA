@@ -27,8 +27,15 @@ BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
 hydrant_bp = Blueprint(BP_NAME, __name__)
 api = Api(hydrant_bp)
 
+
 # Define schemas
 class HydrantSchema(ma.Schema):
+    """
+    Schema for validating and serializing Hydrant data.
+    This schema defines the fields required for a hydrant record.
+    """
+
+    id = fields.Integer(dump_only=True)  # read-only
     stato = fields.String(required=True)
     latitudine = fields.Float(required=True)
     longitudine = fields.Float(required=True)
@@ -36,9 +43,10 @@ class HydrantSchema(ma.Schema):
     via = fields.String(required=True)
     area_geo = fields.String(required=True)
     tipo = fields.String(required=True)
-    accessibilità = fields.String(required=True)  # fixed spelling
+    accessibilità = fields.String(required=True)
 
 
+# Initialize the schema
 hydrant_schema = HydrantSchema()
 
 
@@ -63,7 +71,7 @@ class HydrantResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Get the data
+        # Gather the data from the database
         hydrant: Hydrant = Hydrant.query.filter_by(id=id_).first()
 
         # Check if the result is empty
@@ -75,14 +83,15 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            type="info",
-            message=f"User {identity} fetched hydrant with id_ {id_}",
-            message_id="UserAction",
+            log_type="info",
+            message=f"User {identity} fetched hydrant with id {id_}",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
         # Return the hydrant as a JSON response
-        return create_response(message=hydrant.to_dict(), status_code=STATUS_CODES["ok"])
+        return create_response(
+            message=hydrant.to_dict(), status_code=STATUS_CODES["ok"]
+        )
 
     @jwt_required()
     def post(self, identity) -> Response:
@@ -98,30 +107,32 @@ class HydrantResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        email_ins = identity
-
         # Check if the email exists in the database
-        email_exists: bool = User.query.filter_by(email=email_ins).first() is not None
+        email_exists: bool = db.session.query(
+            db.session.query(User).filter_by(email=identity).exists()
+        ).scalar()
+
         if email_exists is False:
             return create_response(
-            message={"error": "email found in JWT not present in database"},
-            status_code=STATUS_CODES["bad_request"],
+                message={"error": "email found in JWT not present in database"},
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Check if the hydrant already exists
         hydrant_exists: bool = db.session.query(
-            db.func.exists().select().where(
+            db.func.exists().where(
                 Hydrant.stato == data["stato"],
                 Hydrant.latitudine == data["latitudine"],
                 Hydrant.longitudine == data["longitudine"],
             )
         ).scalar()
-        if hydrant_exists is False:
+
+        if hydrant_exists is True:
             return create_response(
-            message={
-                "error": "hydrant with provided stato, latitudine and longitudine already exists"
-            },
-            status_code=STATUS_CODES["bad_request"],
+                message={
+                    "error": "hydrant with provided stato, latitudine and longitudine already exists"
+                },
+                status_code=STATUS_CODES["bad_request"],
             )
 
         # Insert the new hydrant into the database
@@ -134,16 +145,15 @@ class HydrantResource(Resource):
             area_geo=data["area_geo"],
             tipo=data["tipo"],
             accessibilità=data["accessibilità"],
-            email_ins=email_ins,
+            email_ins=identity,
         )
         db.session.add(new_hydrant)
         db.session.commit()
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} created hydrant with id_ {new_hydrant.id}",
-            message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
@@ -151,7 +161,9 @@ class HydrantResource(Resource):
         return create_response(
             message={
                 "outcome": "successfully created new hydrant",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=new_hydrant.id),
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=new_hydrant.id
+                ),
             },
             status_code=STATUS_CODES["created"],
         )
@@ -162,8 +174,8 @@ class HydrantResource(Resource):
         Update a hydrant row in the database by its ID.
         """
         try:
-            # Validate and deserialize input
-            data = hydrant_schema.load(request.get_json())
+            # Allow partial updates
+            data = hydrant_schema.load(request.get_json(), partial=True)
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -171,30 +183,34 @@ class HydrantResource(Resource):
             )
 
         # Validate the ID
-        if id_ <= 0:
+        if id_ < 0:
             return create_response(
                 message={"error": "id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Check if the ID exists in the database
+        # Gather data from the database
         hydrant = Hydrant.query.filter_by(id=id_).first()
-        if not hydrant:
+
+        # Check if the hydrant exists
+        if hydrant is None:
             return create_response(
-            message={"error": "specified resource does not exist in the database"},
-            status_code=STATUS_CODES["not_found"],
+                message={"error": "specified resource does not exist in the database"},
+                status_code=STATUS_CODES["not_found"],
             )
 
         # Check if the email exists in the database
-        email_ins = identity
-        email_exists: bool = User.query.filter_by(email=email_ins).first() is not None
-        if not email_exists:
+        email_exists: bool = db.session.query(
+            db.session.query(User).filter_by(email=identity).exists()
+        ).scalar()
+
+        if email_exists is False:
             return create_response(
-            message={"error": "email found in JWT not present in database"},
-            status_code=STATUS_CODES["bad_request"],
+                message={"error": "email found in JWT not present in database"},
+                status_code=STATUS_CODES["bad_request"],
             )
 
-        # Update the hydrant object
+        # Update only provided fields
         for key, value in data.items():
             setattr(hydrant, key, value)
 
@@ -202,9 +218,8 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} updated hydrant with id {id_}",
-            message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",
         )
 
@@ -231,9 +246,9 @@ class HydrantResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Execute the query
-        hydrant = Hydrant.query.filter_by(id=id_).first()
-        if hydrant is None:
+        # Attempt to fetch and delete the hydrant in one go
+        hydrant = Hydrant.query.get(id_)
+        if not hydrant:
             return create_response(
                 message={"error": "specified resource does not exist in the database"},
                 status_code=STATUS_CODES["not_found"],
@@ -244,7 +259,7 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            type="info",
+            log_type="info",
             message=f"User {identity} deleted hydrant with id {id_}",
             message_id="UserAction",
             structured_data=f"[endpoint='{request.path} verb='{request.method}']",

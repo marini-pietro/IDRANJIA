@@ -104,10 +104,10 @@ def is_input_safe(data: Union[str, List[Any], Dict[Any, Any]]) -> bool:
 @main_api.before_request
 def validate_user_data():
     """
-    Validate user data for all incoming requests by checking for SQL injection, 
-    JSON presence for methods that use them and JSON format.  
-    This function is called before each request to ensure 
-    that the data is safe and valid.  
+    Validate user data for all incoming requests by checking for SQL injection,
+    JSON presence for methods that use them and JSON format.
+    This function is called before each request to ensure
+    that the data is safe and valid.
     This does check for any endpoint specific validation, which should be done in the respective blueprint.
     """
     # Validate JSON body for POST, PUT, PATCH methods
@@ -154,7 +154,9 @@ def validate_user_data():
             if not is_input_safe(value):
                 return (
                     jsonify(
-                        {"error": f"Invalid path variable: {key} suspected SQL injection"}
+                        {
+                            "error": f"Invalid path variable: {key} suspected SQL injection"
+                        }
                     ),
                     STATUS_CODES["bad_request"],
                 )
