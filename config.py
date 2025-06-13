@@ -14,7 +14,7 @@ from datetime import timedelta
 
 # Authentication server related settings
 AUTH_SERVER_HOST: str = "localhost"  # The host of the authentication server
-AUTH_SERVER_PORT: int = 6002  # The port of the authentication server
+AUTH_SERVER_PORT: int = 5002  # The port of the authentication server
 AUTH_SERVER_NAME_IN_LOG: str = "auth-server"
 AUTH_SERVER_DEBUG_MODE: bool = True
 AUTH_SERVER_RATE_LIMIT: bool = (
@@ -32,9 +32,7 @@ JWT_VALIDATION_CACHE_TTL: int = (
 
 # Log server related settings
 LOG_SERVER_HOST: str = "localhost"  # The host of the log server
-LOG_SERVER_PORT: int = (
-    6014  # The port of the log server (default syslog port, can modified to open port for testing)
-)
+LOG_SERVER_PORT: int = 5014  # The port of the log server
 LOG_FILE_NAME: str = "idranjia_log.txt"
 LOGGER_NAME: str = "idranjia_logger"  # The name of the logger
 LOG_SERVER_NAME_IN_LOG: str = "log-server"  # The name of the server in the log messages
@@ -56,16 +54,17 @@ SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog 
 # API server related settings
 # | API server settings
 API_SERVER_HOST: str = "localhost"
-API_SERVER_PORT: int = 6000
+API_SERVER_PORT: int = 5000
 API_SERVER_NAME_IN_LOG: str = "api-server"  # The name of the server in the log messages
 API_VERSION: str = "v1"  # The version of the API
-URL_PREFIX: str = f"/api/{API_VERSION}/"  # The prefix for all API endpoints
+URL_PREFIX: str = f"/api/{API_VERSION}"  # The prefix for all API endpoints
 API_SERVER_DEBUG_MODE: bool = True  # Whether the API server is in debug mode or not
 API_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the API server
 LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
     "localhost",
     "127.0.0.1",
-}  # Determines if login is allowed through the API server (True if the authentication server is running locally)
+}  # Determines if login is allowed through the API server
+#    (True if the authentication server is running on the same machine as the API server)
 API_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
 API_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
 API_SERVER_SSL: bool = not (
@@ -192,3 +191,19 @@ SQL_PATTERN = re_compile(
     + r"|(--|#|;)",  # Match special characters without word boundaries
     RE_IGNORECASE,
 )
+
+# Flasgger (Swagger UI) configuration
+SWAGGER_CONFIG = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec",
+            "route": "/apispec.json",
+            "rule_filter": lambda rule: True,  # all in
+            "model_filter": lambda tag: True,  # all in
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/docs/",
+}

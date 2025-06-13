@@ -56,12 +56,29 @@ class HydrantResource(Resource):
     This class provides methods to create, read, update, and delete hydrant records.
     """
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
     def get(self, id_, identity) -> Response:
         """
-        Read hydrant data from the database.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get hydrant by ID
+        description: Retrieve hydrant data from the database by its integer ID.
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          200:
+            description: Hydrant found
+          400:
+            description: Invalid ID
+          404:
+            description: Hydrant not found
         """
 
         # Validate the id_
@@ -94,12 +111,195 @@ class HydrantResource(Resource):
         )
 
     @jwt_required()
+    def patch(self, id_, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Update a hydrant by ID
+        description: Update an existing hydrant record by its integer ID. Allows partial updates.
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            schema:
+              type: integer
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hydrant'
+        responses:
+          200:
+            description: Hydrant updated
+          400:
+            description: Invalid input or user not found
+          404:
+            description: Hydrant not found
+        """
+
+        # Allow partial updates
+        try:
+            data = hydrant_schema.load(request.get_json(), partial=True)
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Validate the ID
+        if id_ < 0:
+            return create_response(
+                message={"error": "id_ must be positive integer"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Gather data from the database
+        hydrant = Hydrant.query.filter_by(id=id_).first()
+
+        # Check if the hydrant exists
+        if hydrant is None:
+            return create_response(
+                message={"error": "specified resource does not exist in the database"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Check if the email exists in the database
+        email_exists: bool = db.session.query(
+            db.session.query(User).filter_by(email=identity).exists()
+        ).scalar()
+
+        if email_exists is False:
+            return create_response(
+                message={"error": "email found in JWT not present in database"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Update only provided fields
+        for key, value in data.items():
+            setattr(hydrant, key, value)
+
+        db.session.commit()
+
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} updated hydrant with id {id_}",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return the response
+        return create_response(
+            message={
+                "outcome": "successfully updated hydrant",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
+            },
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def delete(self, id_, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Delete a hydrant by ID
+        description: Delete a hydrant record from the database by its integer ID.
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          200:
+            description: Hydrant deleted
+          400:
+            description: Invalid ID
+          404:
+            description: Hydrant not found
+        """
+
+        # Validate the ID
+        if id_ < 0:
+            return create_response(
+                message={"error": "id_ must be positive integer."},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Attempt to fetch and delete the hydrant in one go
+        hydrant = Hydrant.query.get(id_)
+        if not hydrant:
+            return create_response(
+                message={"error": "specified resource does not exist in the database"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        db.session.delete(hydrant)
+        db.session.commit()
+
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} deleted hydrant with id {id_}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return the response
+        return create_response(
+            message={"outcome": "successfully deleted hydrant"},
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def options(self) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for hydrant resource
+        description: Returns the allowed HTTP methods for the hydrant resource endpoint.
+        responses:
+          200:
+            description: Allowed methods returned
+        """
+
+        return handle_options_request(resource_class=self)
+
+
+class HydrantPostResource(Resource):
+    """
+    Resource for creating new hydrants.
+    This class provides a method to create a new hydrant record.
+    """
+
+    ENDPOINT_PATHS = [f"/{BP_NAME}"]
+
+    @jwt_required()
     def post(self, identity) -> Response:
         """
-        Create a new hydrant row in the database.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Create a new hydrant
+        description: Create a new hydrant record in the database.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hydrant'
+        responses:
+          201:
+            description: Hydrant created
+          400:
+            description: Invalid input or user not found
         """
+
+        # Validate and deserialize input
         try:
-            # Validate and deserialize input
             data = hydrant_schema.load(request.get_json())
         except ValidationError as err:
             return create_response(
@@ -169,111 +369,21 @@ class HydrantResource(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_, identity) -> Response:
-        """
-        Update a hydrant row in the database by its ID.
-        """
-        try:
-            # Allow partial updates
-            data = hydrant_schema.load(request.get_json(), partial=True)
-        except ValidationError as err:
-            return create_response(
-                message={"error": err.messages},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Validate the ID
-        if id_ < 0:
-            return create_response(
-                message={"error": "id_ must be positive integer"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Gather data from the database
-        hydrant = Hydrant.query.filter_by(id=id_).first()
-
-        # Check if the hydrant exists
-        if hydrant is None:
-            return create_response(
-                message={"error": "specified resource does not exist in the database"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Check if the email exists in the database
-        email_exists: bool = db.session.query(
-            db.session.query(User).filter_by(email=identity).exists()
-        ).scalar()
-
-        if email_exists is False:
-            return create_response(
-                message={"error": "email found in JWT not present in database"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Update only provided fields
-        for key, value in data.items():
-            setattr(hydrant, key, value)
-
-        db.session.commit()
-
-        # Log the action
-        log(
-            log_type="info",
-            message=f"User {identity} updated hydrant with id {id_}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return the response
-        return create_response(
-            message={
-                "outcome": "successfully updated hydrant",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
-            },
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
-    def delete(self, id_, identity) -> Response:
-        """
-        Delete a hydrant row by ID.
-        ID is passed as a path variable integer.
-        """
-
-        # Validate the ID
-        if id_ < 0:
-            return create_response(
-                message={"error": "id_ must be positive integer."},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Attempt to fetch and delete the hydrant in one go
-        hydrant = Hydrant.query.get(id_)
-        if not hydrant:
-            return create_response(
-                message={"error": "specified resource does not exist in the database"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        db.session.delete(hydrant)
-        db.session.commit()
-
-        # Log the action
-        log(
-            log_type="info",
-            message=f"User {identity} deleted hydrant with id {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return the response
-        return create_response(
-            message={"outcome": "successfully deleted hydrant"},
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
     def options(self) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for hydrant resource
+        description: Returns the allowed HTTP methods for the hydrant resource endpoint.
+        responses:
+          200:
+            description: Allowed methods returned
+        """
+
         return handle_options_request(resource_class=self)
 
 
+# Register the resources with the API
 api.add_resource(HydrantResource, *HydrantResource.ENDPOINT_PATHS)
+api.add_resource(HydrantPostResource, *HydrantPostResource.ENDPOINT_PATHS)

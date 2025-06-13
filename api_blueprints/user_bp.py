@@ -71,13 +71,27 @@ def hash_password(password: str) -> str:
 
 class UserResource(Resource):
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<string:email>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}/<string:email>"]
 
     @jwt_required()
     def get(self, email, identity) -> Response:
         """
-        Get user information from the database by its email.
-        The email is passed as a path variable.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get user by email
+        description: Retrieve user information from the database by email.
+        parameters:
+          - name: email
+            in: path
+            required: true
+            schema:
+              type: string
+        responses:
+          200:
+            description: User found
+          404:
+            description: User not found
         """
 
         # Fetch user data from the database
@@ -111,10 +125,168 @@ class UserResource(Resource):
         )
 
     @jwt_required()
+    def patch(self, email, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Update user by email
+        description: Update user information in the database by email. Allows partial updates.
+        parameters:
+          - name: email
+            in: path
+            required: true
+            schema:
+              type: string
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        responses:
+          200:
+            description: User updated
+          400:
+            description: Invalid input
+          404:
+            description: User not found
+        """
+        try:
+            # Allow partial updates
+            data = user_schema.load(request.get_json(), partial=True)
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        # Check if the user exists in the database using ORM
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return create_response(
+                message={"error": "user not found"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Update fields if provided
+        if "password" in data and data["password"]:
+            user.password = hash_password(data["password"])
+        if "comune" in data and data["comune"]:
+            user.comune = data["comune"]
+        if "nome" in data and data["nome"]:
+            user.nome = data["nome"]
+        if "cognome" in data and data["cognome"]:
+            user.cognome = data["cognome"]
+        if "admin" in data:
+            user.admin = data["admin"]
+        db.session.commit()
+
+        # Log the update
+        log(
+            log_type="info",
+            message=f"UserResource {identity} updated user {email}",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return a success response
+        return create_response(
+            message={"success": f"User {email} updated"},
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def delete(self, email, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Delete user by email
+        description: Delete a user from the database by email.
+        parameters:
+          - name: email
+            in: path
+            required: true
+            schema:
+              type: string
+        responses:
+          200:
+            description: User deleted
+          404:
+            description: User not found
+        """
+
+        user = User.query.filter_by(email=email).first()
+
+        if user is None:
+            return create_response(
+                message={"error": "user not found with provided email"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Execute the delete query
+        db.session.delete(user)
+        db.session.commit()
+
+        # Log the deletion
+        log(
+            log_type="info",
+            message=f"UserResource {email} deleted user {identity}",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return a success response
+        return create_response(
+            message={"success": f"User {email} deleted"},
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def options(self) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for user resource
+        description: Returns the allowed HTTP methods for the user resource endpoint.
+        responses:
+          200:
+            description: Allowed methods returned
+        """
+        return handle_options_request(resource_class=self)
+
+
+class UserPostResource(Resource):
+    """
+    UserResource post resource for creating new users.
+    This class handles the following HTTP methods:
+    - POST: Create a new user
+    - OPTIONS: Get allowed HTTP methods for this endpoint
+    """
+
+    ENDPOINT_PATHS = [f"/{BP_NAME}"]
+
+    @jwt_required()
     def post(self, identity) -> Response:
         """
-        Create a new user in the database.
-        The request body must be a JSON object with application/json content type.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Create a new user
+        description: Create a new user in the database.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        responses:
+          201:
+            description: User created
+          400:
+            description: Invalid input
+          409:
+            description: User already exists
         """
         try:
             # Validate and deserialize input
@@ -173,92 +345,16 @@ class UserResource(Resource):
         )
 
     @jwt_required()
-    def patch(self, email, identity) -> Response:
-        """
-        Update user information in the database.
-        The request body must be a JSON object with application/json content type.
-        """
-        try:
-            # Allow partial updates
-            data = user_schema.load(request.get_json(), partial=True)
-        except ValidationError as err:
-            return create_response(
-                message={"error": err.messages},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        # Check if the user exists in the database using ORM
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            return create_response(
-                message={"error": "user not found"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Update fields if provided
-        if "password" in data and data["password"]:
-            user.password = hash_password(data["password"])
-        if "comune" in data and data["comune"]:
-            user.comune = data["comune"]
-        if "nome" in data and data["nome"]:
-            user.nome = data["nome"]
-        if "cognome" in data and data["cognome"]:
-            user.cognome = data["cognome"]
-        if "admin" in data:
-            user.admin = data["admin"]
-        db.session.commit()
-
-        # Log the update
-        log(
-            log_type="info",
-            message=f"UserResource {identity} updated user {email}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return a success response
-        return create_response(
-            message={"success": f"User {email} updated"},
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
-    def delete(self, email, identity) -> Response:
-        """
-        Delete a user from the database by its email.
-        """
-
-        user = User.query.filter_by(email=email).first()
-
-        if user is None:
-            return create_response(
-                message={"error": "user not found with provided email"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Execute the delete query
-        db.session.delete(user)
-        db.session.commit()
-
-        # Log the deletion
-        log(
-            log_type="info",
-            message=f"UserResource {email} deleted user {identity}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return a success response
-        return create_response(
-            message={"success": f"User {email} deleted"},
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
     def options(self) -> Response:
         """
-        Handle OPTIONS request for CORS preflight.
-        This method returns the allowed HTTP methods for this endpoint.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for user resource
+        description: Returns the allowed HTTP methods for the user resource endpoint.
+        responses:
+          200:
+            description: Allowed methods returned
         """
         return handle_options_request(resource_class=self)
 
@@ -283,8 +379,28 @@ class UserLogin(Resource):
 
     def post(self) -> Response:
         """
-        UserResource login endpoint.
-        The request body must be a JSON object with application/json content type.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: User login
+        description: Authenticate a user and return a JWT token.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLogin'
+        responses:
+          200:
+            description: Login successful
+          400:
+            description: Invalid input
+          401:
+            description: Invalid credentials
+          403:
+            description: Login not available through API server
+          500:
+            description: Authentication service unavailable or internal error
         """
 
         # Check if login is available through the API server
@@ -391,11 +507,19 @@ class UserLogin(Resource):
 
     def options(self) -> Response:
         """
-        Handle OPTIONS request for CORS preflight.
-        This method returns the allowed HTTP methods for this endpoint.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for user login resource
+        description: Returns the allowed HTTP methods for the user login endpoint.
+        responses:
+          200:
+            description: Allowed methods returned
         """
         return handle_options_request(resource_class=self)
 
 
+# Register the resources with the API
 api.add_resource(UserResource, *UserResource.ENDPOINT_PATHS)
+api.add_resource(UserPostResource, *UserPostResource.ENDPOINT_PATHS)
 api.add_resource(UserLogin, *UserLogin.ENDPOINT_PATHS)
