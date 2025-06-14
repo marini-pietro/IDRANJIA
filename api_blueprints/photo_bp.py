@@ -53,12 +53,47 @@ class PhotoResource(Resource):
     This class provides methods to create, read, update, and delete photos associated with hydrants.
     """
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
     def get(self, hydrant_id, identity) -> Response:
         """
-        Get a photo by ID of the hydrant that it represents.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get photos by hydrant ID
+        description: Retrieve all photos associated with a hydrant by its integer ID.
+        operationId: getPhotosByHydrantId
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: hydrant_id
+            in: path
+            required: true
+            schema:
+              type: integer
+              example: 1
+        responses:
+          200:
+            description: Photos found
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      posizione:
+                        type: string
+                        example: "foto/1.png"
+                      data:
+                        type: string
+                        format: date
+                        example: "2024-05-01"
+          400:
+            description: Invalid hydrant ID
+          404:
+            description: Hydrant or photos not found
         """
 
         # Validate the hydrant_id
@@ -104,9 +139,254 @@ class PhotoResource(Resource):
         )
 
     @jwt_required()
+    def patch(self, id_, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Update a photo by ID
+        description: Update an existing photo record by its integer ID. Allows partial updates.
+        operationId: updatePhotoById
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            description: The unique identifier of the photo to update.
+            schema:
+              type: integer
+              example: 1
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_idrante:
+                    type: integer
+                    example: 1
+                  posizione:
+                    type: string
+                    example: "foto/1.png"
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+              example:
+                id_idrante: 1
+                posizione: "foto/1.png"
+                data: "2024-05-01"
+        responses:
+          200:
+            description: Photo updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully updated
+                    location:
+                      type: string
+                      example: /photo/1
+                example:
+                  outcome: photo successfully updated
+          400:
+            description: Invalid input
+          404:
+            description: Photo not found
+        """
+
+        # Validate the ID
+        if id_ < 0:
+            return create_response(
+                message={"error": "photo id_ must be positive integer"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        photo = Photo.query.get(id_)
+        if photo is None:
+            return create_response(
+                message={"error": "photo with specified id not found"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Validate and deserialize input data
+        try:
+            # Allow partial updates
+            data = photo_schema.load(request.get_json(), partial=True)
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        for key, value in data.items():
+            setattr(photo, key, value)
+        db.session.commit()
+
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} updated photo with id_ {id_}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return the response
+        return create_response(
+            message={
+                "outcome": "photo successfully updated",
+                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
+            },
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def delete(self, id_, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Delete a photo by ID
+        description: Delete a photo record from the database by its integer ID.
+        operationId: deletePhotoById
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            schema:
+              type: integer
+              example: 1
+        responses:
+          200:
+            description: Photo deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully deleted
+          400:
+            description: Invalid ID
+          404:
+            description: Photo not found
+        """
+
+        # Validate the ID
+        if id_ < 0:
+            return create_response(
+                message={"error": "photo id_ must be positive integer"},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        photo = Photo.query.get(id_)
+        if photo is None:
+            return create_response(
+                message={"error": "photo with specified id not found"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Delete the photo
+        db.session.delete(photo)
+
+        # Commit the changes to the database
+        db.session.commit()
+
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} deleted photo with id_ {id_}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return the response
+        return create_response(
+            message={"outcome": "photo successfully deleted"},
+            status_code=STATUS_CODES["ok"],
+        )
+
+    @jwt_required()
+    def options(self) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for photo resource
+        description: Returns the allowed HTTP methods for the photo resource endpoint.
+        operationId: optionsPhoto
+        security:
+          - bearerAuth: []
+        responses:
+          200:
+            description: Allowed methods returned
+        """
+
+        return handle_options_request(resource_class=self)
+
+
+class PhotoPostResource(Resource):
+    """
+    Resource for creating new photos associated with hydrants.
+    This class provides a method to create a new photo record.
+    """
+
+    ENDPOINT_PATHS = [f"/{BP_NAME}"]
+
+    @jwt_required()
     def post(self, identity) -> Response:
         """
-        Create a new photo row in the database.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Create a new photo
+        description: Create a new photo record associated with a hydrant.
+        operationId: createPhoto
+        security:
+          - bearerAuth: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_idrante:
+                    type: integer
+                    example: 1
+                  posizione:
+                    type: string
+                    example: "foto/1.png"
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+        responses:
+          201:
+            description: Photo created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: photo successfully created
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/photo/1
+          400:
+            description: Invalid input
+          404:
+            description: Hydrant not found
         """
 
         # Validate and deserialize input data
@@ -170,105 +450,24 @@ class PhotoResource(Resource):
         )
 
     @jwt_required()
-    def patch(self, id_, identity) -> Response:
-        """
-        Update a photo by ID.
-        """
-
-        # Validate the ID
-        if id_ < 0:
-            return create_response(
-                message={"error": "photo id_ must be positive integer"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        photo = Photo.query.get(id_)
-        if photo is None:
-            return create_response(
-                message={"error": "photo with specified id not found"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Validate and deserialize input data
-        try:
-            # Allow partial updates
-            data = photo_schema.load(request.get_json(), partial=True)
-        except ValidationError as err:
-            return create_response(
-                message={"error": err.messages},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        for key, value in data.items():
-            setattr(photo, key, value)
-        db.session.commit()
-
-        # Log the action
-        log(
-            log_type="info",
-            message=f"User {identity} updated photo with id_ {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return the response
-        return create_response(
-            message={
-                "outcome": "photo successfully updated",
-                "location": get_hateos_location_string(bp_name=BP_NAME, id_=id_),
-            },
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
-    def delete(self, id_, identity) -> Response:
-        """
-        Delete a photo by ID.
-        """
-
-        # Validate the ID
-        if id_ < 0:
-            return create_response(
-                message={"error": "photo id_ must be positive integer"},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        photo = Photo.query.get(id_)
-        if photo is None:
-            return create_response(
-                message={"error": "photo with specified id not found"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Delete the photo
-        db.session.delete(photo)
-
-        # Commit the changes to the database
-        db.session.commit()
-
-        # Log the action
-        log(
-            log_type="info",
-            message=f"User {identity} deleted photo with id_ {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return the response
-        return create_response(
-            message={"outcome": "photo successfully deleted"},
-            status_code=STATUS_CODES["ok"],
-        )
-
-    @jwt_required()
     def options(self) -> Response:
         """
-        Handle OPTIONS request for CORS preflight.
-        This method is used to handle CORS preflight requests.
-        It allows the client to check what HTTP methods are allowed for this resource.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for photo resource
+        description: Returns the allowed HTTP methods for the photo resource endpoint.
+        operationId: optionsPhotoPost
+        security:
+          - bearerAuth: []
+        responses:
+          200:
+            description: Allowed methods returned
         """
 
         return handle_options_request(resource_class=self)
 
 
+# Register the resources with the API
 api.add_resource(PhotoResource, *PhotoResource.ENDPOINT_PATHS)
+api.add_resource(PhotoPostResource, *PhotoPostResource.ENDPOINT_PATHS)

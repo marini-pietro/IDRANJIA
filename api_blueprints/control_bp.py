@@ -55,13 +55,55 @@ class ControlResource(Resource):
     It supports GET, POST, PATCH, DELETE, and OPTIONS methods.
     """
 
-    ENDPOINT_PATHS = [f"/{BP_NAME}", f"/{BP_NAME}/<int:id_>"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}/<int:id_>"]
 
     @jwt_required()
     def get(self, id_, identity) -> Response:
         """
-        Get a control row data by ID.
-        ID is passed as a path variable integer.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get a control row by ID
+        description: Retrieve a control record from the database by its integer ID.
+        operationId: getControlById
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            description: The unique identifier of the control to retrieve.
+            schema:
+              type: integer
+              example: 1
+        responses:
+          200:
+            description: Control record found
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    id_controllo:
+                      type: integer
+                      example: 1
+                    tipo:
+                      type: string
+                      example: "manutenzione"
+                    esito:
+                      type: boolean
+                      example: true
+                    data:
+                      type: string
+                      format: date
+                      example: "2024-05-01"
+                    id_idrante:
+                      type: integer
+                      example: 2
+          400:
+            description: Invalid ID
+          404:
+            description: Control not found
         """
 
         # Validate the ID
@@ -97,71 +139,62 @@ class ControlResource(Resource):
         )
 
     @jwt_required()
-    def post(self, identity) -> Response:
-        """
-        Create a new row in control table.
-        The data is passed as a JSON body.
-        """
-        try:
-            # Validate and deserialize input
-            data = control_schema.load(request.get_json())
-        except ValidationError as err:
-            return create_response(
-                message={"error": err.messages},
-                status_code=STATUS_CODES["bad_request"],
-            )
-
-        tipo = data["tipo"]
-        esito = data["esito"]
-        data_esecuzione = data["data"]
-        id_idrante = data["id_idrante"]
-
-        # Check that the id_idrante exists in the database
-        hydrant_exists: bool = db.session.query(
-            db.session.query(Hydrant).filter_by(id_idrante=id_idrante).exists()
-        ).scalar()
-
-        # If the hydrant does not exist, return an error response
-        if hydrant_exists is False:
-            return create_response(
-                message={"error": "specified hydrant does not exist in the database"},
-                status_code=STATUS_CODES["not_found"],
-            )
-
-        # Create a new Control instance
-        new_control = Control(
-            tipo=tipo, esito=esito, data=data_esecuzione, id_idrante=id_idrante
-        )
-
-        # Add to session and commit
-        db.session.add(new_control)
-        db.session.commit()
-
-        # Log the action
-        log(
-            log_type="info",
-            message=f"User {identity} created control with id_ {new_control.id_controllo}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-        )
-
-        # Return the response
-        return create_response(
-            message={
-                "outcome": "successfully created new control",
-                "location": get_hateos_location_string(
-                    bp_name=BP_NAME, id_=new_control.id_controllo
-                ),
-            },
-            status_code=STATUS_CODES["created"],
-        )
-
-    @jwt_required()
     def patch(self, id_, identity) -> Response:
         """
-        Update a control row by ID.
-        ID is passed as a path variable integer.
-        The data is passed as a JSON body.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Update a control row by ID
+        description: Update an existing control record by its integer ID. Allows partial updates.
+        operationId: updateControlById
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            description: The unique identifier of the control to update.
+            schema:
+              type: integer
+              example: 1
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "manutenzione"
+                  esito:
+                    type: boolean
+                    example: true
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+                  id_idrante:
+                    type: integer
+                    example: 2
+        responses:
+          200:
+            description: Control updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully updated control
+                    location:
+                      type: string
+                      example: /control/1
+          400:
+            description: Invalid input
+          404:
+            description: Control or hydrant not found
         """
         try:
             # Allow partial updates
@@ -232,8 +265,37 @@ class ControlResource(Resource):
     @jwt_required()
     def delete(self, id_, identity) -> Response:
         """
-        Delete a control row by ID.
-        ID is passed as a path variable integer.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Delete a control row by ID
+        description: Delete a control record from the database by its integer ID.
+        operationId: deleteControlById
+        security:
+          - bearerAuth: []
+        parameters:
+          - name: id_
+            in: path
+            required: true
+            description: The unique identifier of the control to delete.
+            schema:
+              type: integer
+              example: 1
+        responses:
+          200:
+            description: Control deleted
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully deleted control
+          400:
+            description: Invalid ID
+          404:
+            description: Control not found
         """
 
         # Validate the ID
@@ -273,11 +335,153 @@ class ControlResource(Resource):
     @jwt_required()
     def options(self) -> Response:
         """
-        Handle OPTIONS request for the resource.
-        This method is used to provide information about the allowed HTTP methods.
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for control resource
+        description: Returns the allowed HTTP methods for the control resource endpoint.
+        operationId: optionsControl
+        security:
+          - bearerAuth: []
+        responses:
+          200:
+            description: Allowed methods returned
         """
 
         return handle_options_request(resource_class=self)
 
 
+class ControlPostResource(Resource):
+    """
+    Resource for creating new control records.
+    This class provides a method to handle POST requests for control records.
+    """
+
+    ENDPOINT_PATHS = [f"/{BP_NAME}"]
+
+    @jwt_required()
+    def post(self, identity) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Create a new control row
+        description: Create a new control record in the database.
+        operationId: createControl
+        security:
+          - bearerAuth: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tipo:
+                    type: string
+                    example: "manutenzione"
+                  esito:
+                    type: boolean
+                    example: true
+                  data:
+                    type: string
+                    format: date
+                    example: "2024-05-01"
+                  id_idrante:
+                    type: integer
+                    example: 2
+        responses:
+          201:
+            description: Control created
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    outcome:
+                      type: string
+                      example: successfully created new control
+                    location:
+                      type: string
+                      example: https://localhost:5000/api/v1/control/1
+          400:
+            description: Invalid input
+          404:
+            description: Hydrant not found
+        """
+        try:
+            # Validate and deserialize input
+            data = control_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+
+        tipo = data["tipo"]
+        esito = data["esito"]
+        data_esecuzione = data["data"]
+        id_idrante = data["id_idrante"]
+
+        # Check that the id_idrante exists in the database
+        hydrant_exists: bool = db.session.query(
+            db.session.query(Hydrant).filter_by(id_idrante=id_idrante).exists()
+        ).scalar()
+
+        # If the hydrant does not exist, return an error response
+        if hydrant_exists is False:
+            return create_response(
+                message={"error": "specified hydrant does not exist in the database"},
+                status_code=STATUS_CODES["not_found"],
+            )
+
+        # Create a new Control instance
+        new_control = Control(
+            tipo=tipo, esito=esito, data=data_esecuzione, id_idrante=id_idrante
+        )
+
+        # Add to session and commit
+        db.session.add(new_control)
+        db.session.commit()
+
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} created control with id_ {new_control.id_controllo}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
+
+        # Return the response
+        return create_response(
+            message={
+                "outcome": "successfully created new control",
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=new_control.id_controllo
+                ),
+            },
+            status_code=STATUS_CODES["created"],
+        )
+
+    @jwt_required()
+    def options(self) -> Response:
+        """
+        ---
+        tags:
+          - API Server (api_server)
+        summary: Get allowed HTTP methods for control resource
+        description: Returns the allowed HTTP methods for the control resource endpoint.
+        operationId: optionsControlPost
+        security:
+          - bearerAuth: []
+        responses:
+          200:
+            description: Allowed methods returned
+        """
+
+        return handle_options_request(resource_class=self)
+
+
+# Register the resources with the API
 api.add_resource(ControlResource, *ControlResource.ENDPOINT_PATHS)
+api.add_resource(ControlPostResource, *ControlPostResource.ENDPOINT_PATHS)

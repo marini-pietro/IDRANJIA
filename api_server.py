@@ -13,7 +13,9 @@ from importlib import import_module
 from flask import Flask, jsonify, request
 from flask_jwt_extended import JWTManager
 from flask_marshmallow import Marshmallow
-from api_blueprints import __all__  # Import all the blueprints
+from flasgger import Swagger
+import os
+
 from api_blueprints.blueprints_utils import log, is_rate_limited
 from config import (
     API_SERVER_HOST,
@@ -37,11 +39,152 @@ from config import (
     SQL_PATTERN,
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
+    SWAGGER_CONFIG,
 )
-from models import db  # <-- Add this import
+from models import db
 
 # Create a Flask app
 main_api = Flask(__name__)
+
+# Add OpenAPI specs for auth_server endpoints to the Swagger template
+swagger_template = {
+    "openapi": "3.0.2",
+    "info": {
+        "title": "IDRANJIA API",
+        "version": API_VERSION,
+        "description": "API documentation for IDRANJIA, including authentication endpoints.",
+    },
+    "paths": {
+        # Only include endpoints data from other services here.
+        # Do NOT include API server blueprint endpoints here since they are automatically generated.
+        "/auth/login": {
+            "post": {
+                "tags": ["Authentication (auth_server)"],
+                "summary": "Login endpoint to authenticate users and generate JWT tokens.",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "example": "user@example.com",
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "example": "mypassword",
+                                    },
+                                },
+                                "required": ["email", "password"],
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful login, returns JWT tokens",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "access_token": {"type": "string"},
+                                        "refresh_token": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "400": {"description": "Bad request (missing or invalid data)"},
+                    "401": {"description": "Invalid credentials"},
+                },
+            }
+        },
+        "/auth/validate": {
+            "post": {
+                "tags": ["Authentication (auth_server)"],
+                "summary": "Validate endpoint to check the validity of a JWT token.",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Token is valid",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "identity": {"type": "string"},
+                                        "role": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"description": "Invalid or expired token"},
+                },
+            }
+        },
+        "/auth/refresh": {
+            "post": {
+                "tags": ["Authentication (auth_server)"],
+                "summary": "Refresh endpoint to issue a new access token using a refresh token.",
+                "security": [{"bearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "New access token issued",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "access_token": {"type": "string"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "401": {"description": "Invalid or expired refresh token"},
+                },
+            }
+        },
+        "/health": {
+            "get": {
+                "tags": ["Authentication (auth_server)"],
+                "summary": "Health check endpoint to verify the auth server is running.",
+                "responses": {
+                    "200": {
+                        "description": "Server is healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {"type": "string", "example": "ok"},
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+        }
+    },
+}
+
+# Configure Flasgger (Swagger UI) with the combined template
+main_api.config["SWAGGER"] = {
+    "title": "IDRANJIA API Documentation",
+    "uiversion": 3,
+    "openapi": "3.0.2",
+}
+swagger = Swagger(main_api, template=swagger_template, config=SWAGGER_CONFIG)
 
 # Configure JWT validation settings
 main_api.config["JWT_SECRET_KEY"] = (
@@ -71,7 +214,7 @@ jwt = JWTManager(main_api)
 ma = Marshmallow(main_api)
 
 # Initialize SQLAlchemy
-db.init_app(main_api)  # <-- Initialize db with the Flask app
+db.init_app(main_api)
 
 
 def is_input_safe(data: Union[str, List[Any], Dict[Any, Any]]) -> bool:
@@ -211,7 +354,23 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
 @main_api.route(f"/api/{API_VERSION}/health", methods=["GET"])
 def health_check():
     """
-    Health check endpoint to verify the server is running.
+    ---
+    tags:
+      - API Server (api_server)
+    summary: Health Check
+    description: Returns the status of the API server.
+    operationId: api_health_check
+    responses:
+      200:
+        description: Server is running and healthy.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: ok
     """
     return jsonify({"status": "ok"}), STATUS_CODES["ok"]
 
@@ -254,8 +413,5 @@ if __name__ == "__main__":
     log(
         log_type="info",
         message="API server started",
-        origin_name=API_SERVER_NAME_IN_LOG,
-        origin_host=API_SERVER_HOST,
-        message_id="UserAction",
         structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
     )

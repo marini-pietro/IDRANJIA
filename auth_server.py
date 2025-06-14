@@ -37,6 +37,7 @@ from config import (
     SQLALCHEMY_TRACK_MODIFICATIONS,
 )
 from models import db, User
+from flasgger import Swagger
 
 # Initialize Flask app and SQLAlchemy
 auth_api = Flask(__name__)
@@ -50,6 +51,9 @@ auth_api.config.update(
 )
 db.init_app(auth_api)
 jwt = JWTManager(auth_api)
+
+# Initialize Swagger
+swagger = Swagger(auth_api)
 
 # Check JWT secret key length
 if len(JWT_SECRET_KEY.encode("utf-8")) * 8 < 256:
@@ -111,7 +115,43 @@ def enforce_rate_limit():
 
 @auth_api.route("/auth/login", methods=["POST"])
 def login():
-    """Login endpoint to authenticate users and generate JWT tokens."""
+    """
+    Login endpoint to authenticate users and generate JWT tokens.
+    ---
+    tags:
+      - Authentication
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              email:
+                type: string
+                example: user@example.com
+              password:
+                type: string
+                example: mypassword
+    responses:
+      200:
+        description: Successful login, returns JWT tokens
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+                refresh_token:
+                  type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+      400:
+        description: Bad request (missing or invalid data)
+      401:
+        description: Invalid credentials
+    """
     if not request.is_json or request.json is None:
         return (
             jsonify(
@@ -185,7 +225,30 @@ def login():
 @auth_api.route("/auth/validate", methods=["POST"])
 @jwt_required()
 def validate_token():
-    """Validate endpoint to check the validity of a JWT token."""
+    """
+    Validate endpoint to check the validity of a JWT token.
+    ---
+    tags:
+      - Authentication
+    security:
+      - bearerAuth: []
+    responses:
+      200:
+        description: Token is valid
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identity:
+                  type: string
+                  example: user@example.com
+                role:
+                  type: string
+                  example: admin
+      401:
+        description: Invalid or expired token
+    """
     identity = get_jwt_identity()
     user_role = get_jwt().get("role")
     return jsonify({"identity": identity, "role": user_role}), STATUS_CODES["ok"]
@@ -194,7 +257,27 @@ def validate_token():
 @auth_api.route("/auth/refresh", methods=["POST"])
 @jwt_required(refresh=True)
 def refresh():
-    """Refresh endpoint to issue a new access token using a refresh token."""
+    """
+    Refresh endpoint to issue a new access token using a refresh token.
+    ---
+    tags:
+      - Authentication
+    security:
+      - bearerAuth: []
+    responses:
+      200:
+        description: New access token issued
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+      401:
+        description: Invalid or expired refresh token
+    """
     identity = get_jwt_identity()
     new_access_token = create_access_token(identity=identity)
     return jsonify({"access_token": new_access_token}), STATUS_CODES["ok"]
@@ -202,7 +285,26 @@ def refresh():
 
 @auth_api.route("/health", methods=["GET"])
 def health_check():
-    """Health check endpoint to verify the server is running."""
+    """
+    Health check endpoint to verify the server is running.
+    ---
+    tags:
+      - Health
+    summary: Health check endpoint
+    description: Returns a simple status message to indicate the server is healthy.
+    operationId: auth_health_check
+    responses:
+      200:
+        description: Server is healthy
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: ok
+    """
     return jsonify({"status": "ok"}), STATUS_CODES["ok"]
 
 
