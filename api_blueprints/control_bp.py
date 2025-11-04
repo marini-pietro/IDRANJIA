@@ -355,6 +355,7 @@ class ControlPostResource(Resource):
     """
     Resource for creating new control records.
     This class provides a method to handle POST requests for control records.
+    Separated from ControlResource because it is the easiest way to force different endpoints paths.
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]

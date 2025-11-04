@@ -367,6 +367,7 @@ class HydrantPostResource(Resource):
     """
     Resource for creating new hydrants.
     This class provides a method to create a new hydrant record.
+    Separated from HydrantResource because it is the easiest way to force different endpoints paths.
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]
