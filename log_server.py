@@ -101,9 +101,9 @@ def start_syslog_server(host, port):
     """
     Start a syslog server that listens for messages over UDP.
     """
-    syslog_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    syslog_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Create a UDP socket
     try:
-        syslog_socket.bind((host, port))
+        syslog_socket.bind((host, port)) # Bind to the specified host and port
     except OSError as e:
         print(f"Failed to bind UDP socket on {host}:{port}: {e}")
         print(
@@ -118,11 +118,11 @@ def start_syslog_server(host, port):
                 1.0
             )  # Set a timeout to periodically check the flag
             try:
-                data, addr = syslog_socket.recvfrom(1024)
-                message = data.decode("utf-8")
-                process_syslog_message(message, addr)
+                data, addr = syslog_socket.recvfrom(1024) # Buffer size is 1024 bytes
+                message = data.decode("utf-8") # Decode the received bytes to string
+                process_syslog_message(message, addr) # Process the received message
             except socket.timeout:
-                continue  # Continue the loop if no data is received
+                continue  # Continue to next iteration if no data is received
     except KeyboardInterrupt:
         print("Shutting down syslog server...")
     finally:

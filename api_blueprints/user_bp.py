@@ -65,7 +65,7 @@ def hash_password(password: str) -> str:
     )
     hashed_password = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
-    # Store the salt and hashed password together
+    # Store the salt and hashed password together as "salt:hash"
     return f"{base64.urlsafe_b64encode(salt).decode('utf-8')}:{hashed_password.decode('utf-8')}"
 
 
