@@ -315,115 +315,115 @@ class OperatorResource(Resource):
 
 class OperatorPostResource(Resource):
 
-	ENDPOINT_PATHS = [f"/{BP_NAME}"]
+    ENDPOINT_PATHS = [f"/{BP_NAME}"]
 
-	@jwt_required()
-	def post(self, identity) -> Response:
-		"""
-		---
-		tags:
-		- API Server (api_server)
-		summary: Create a new operator
-		description: Create a new operator record in the database.
-		operationId: createOperator
-		security:
-		- bearerAuth: []
-		requestBody:
-		required: true
-		content:
-			application/json:
-			schema:
-				type: object
-				properties:
-				CF:
-					type: string
-					example: RSSMRA80A01F205X
-				nome:
-					type: string
-					example: Mario
-				cognome:
-					type: string
-					example: Rossi
-		responses:
-		201:
-			description: Operator created
-			content:
-			application/json:
-				schema:
-				type: object
-				properties:
-					outcome:
-					type: string
-					example: operator successfully created
-					location:
-					type: string
-					example: https://localhost:5000/api/v1/operator/RSSMRA80A01F205X
-		400:
-			description: Invalid input
-		"""
-		
-		try:
-			# Validate and deserialize input
-			data = operator_schema.load(request.get_json())
-		except ValidationError as err:
-			return create_response(
-				message={"error": err.messages},
-				status_code=STATUS_CODES["bad_request"],
-			)
-		cf = data["CF"]
-		name = data["nome"]
-		surname = data["cognome"]
+    @jwt_required()
+    def post(self, identity) -> Response:
+        """
+        ---
+        tags:
+        - API Server (api_server)
+        summary: Create a new operator
+        description: Create a new operator record in the database.
+        operationId: createOperator
+        security:
+        - bearerAuth: []
+        requestBody:
+        required: true
+        content:
+                application/json:
+                schema:
+                        type: object
+                        properties:
+                        CF:
+                                type: string
+                                example: RSSMRA80A01F205X
+                        nome:
+                                type: string
+                                example: Mario
+                        cognome:
+                                type: string
+                                example: Rossi
+        responses:
+        201:
+                description: Operator created
+                content:
+                application/json:
+                        schema:
+                        type: object
+                        properties:
+                                outcome:
+                                type: string
+                                example: operator successfully created
+                                location:
+                                type: string
+                                example: https://localhost:5000/api/v1/operator/RSSMRA80A01F205X
+        400:
+                description: Invalid input
+        """
 
-		# Check if the operator already exists
-		operator_exists: Operator = Operator.query.filter_by(CF=cf).first()
-		if operator_exists:
-			return create_response(
-				message={"error": "operator already exists."},
-				status_code=STATUS_CODES["bad_request"],
-			)
+        try:
+            # Validate and deserialize input
+            data = operator_schema.load(request.get_json())
+        except ValidationError as err:
+            return create_response(
+                message={"error": err.messages},
+                status_code=STATUS_CODES["bad_request"],
+            )
+        cf = data["CF"]
+        name = data["nome"]
+        surname = data["cognome"]
 
-		# Create a new operator instance
-		new_operator = Operator(CF=cf, nome=name, cognome=surname)
+        # Check if the operator already exists
+        operator_exists: Operator = Operator.query.filter_by(CF=cf).first()
+        if operator_exists:
+            return create_response(
+                message={"error": "operator already exists."},
+                status_code=STATUS_CODES["bad_request"],
+            )
 
-		# Add and commit the new operator to the database
-		db.session.add(new_operator)
-		db.session.commit()
+        # Create a new operator instance
+        new_operator = Operator(CF=cf, nome=name, cognome=surname)
 
-		# Log the action
-		log(
-			log_type="info",
-			message=f"User {identity} created operator with id {new_operator.id}",
-			message_id="UserAction",
-			structured_data=f"[endpoint='{request.path} verb='{request.method}']",
-		)
+        # Add and commit the new operator to the database
+        db.session.add(new_operator)
+        db.session.commit()
 
-		# Return the new operator as a JSON response
-		return create_response(
-			message={
-				"outcome": "operator successfully created",
-				"location": get_hateos_location_string(
-					bp_name=BP_NAME, id_=new_operator.id
-				),
-			},
-			status_code=STATUS_CODES["created"],
-		)
+        # Log the action
+        log(
+            log_type="info",
+            message=f"User {identity} created operator with id {new_operator.id}",
+            message_id="UserAction",
+            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+        )
 
-	@jwt_required()
-	def options(self) -> Response:
-		"""
-		---
-		tags:
-		- API Server (api_server)
-		summary: Get allowed HTTP methods for operator resource
-		description: Returns the allowed HTTP methods for the operator resource endpoint.
-		operationId: optionsOperatorPost
-		security:
-		- bearerAuth: []
-		responses:
-		200:
-			description: Allowed methods returned
-		"""
-		return handle_options_request(resource_class=self)
+        # Return the new operator as a JSON response
+        return create_response(
+            message={
+                "outcome": "operator successfully created",
+                "location": get_hateos_location_string(
+                    bp_name=BP_NAME, id_=new_operator.id
+                ),
+            },
+            status_code=STATUS_CODES["created"],
+        )
+
+    @jwt_required()
+    def options(self) -> Response:
+        """
+        ---
+        tags:
+        - API Server (api_server)
+        summary: Get allowed HTTP methods for operator resource
+        description: Returns the allowed HTTP methods for the operator resource endpoint.
+        operationId: optionsOperatorPost
+        security:
+        - bearerAuth: []
+        responses:
+        200:
+                description: Allowed methods returned
+        """
+        return handle_options_request(resource_class=self)
 
 
 # Register the blueprint with the API

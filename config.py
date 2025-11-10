@@ -9,7 +9,7 @@ This module contains the configuration settings for the API server, including:
 """
 
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
-from typing import Dict, Set
+from typing import Dict, Set, Tuple
 from datetime import timedelta
 
 # Authentication server related settings
@@ -60,11 +60,16 @@ API_VERSION: str = "v1"  # The version of the API
 URL_PREFIX: str = f"/api/{API_VERSION}"  # The prefix for all API endpoints
 API_SERVER_DEBUG_MODE: bool = True  # Whether the API server is in debug mode or not
 API_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the API server
+API_SERVER_MAX_JSON_SIZE = 50 * 10244  # Maximum JSON payload size in bytes (50 KiB)
+SQL_SCAN_MAX_LEN = (
+    2048  # Maximum length of strings to scan for SQL injection (to prevent ReDoS)
+)
+SQL_SCAN_MAX_RECURSION_DEPTH = 10  # Maximum recursion depth for SQL injection scanning
 LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
     "localhost",
     "127.0.0.1",
 }  # Determines if login is allowed through the API server
-#    (True if the authentication server is running on the same machine as the API server)
+# (True if the authentication server is running on the same machine as the API server)
 API_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
 API_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
 API_SERVER_SSL: bool = not (
@@ -122,7 +127,7 @@ STATUS_CODES: Dict[str, int] = {
     "service_unavailable": 503,
 }
 # | Roles and their corresponding IDs
-ROLES: Set[str] = {"admin", "tutor", "supertutor", "teacher"}
+ROLES: Set[str] = {"admin", "operator", "viewer"}
 
 # | Standard not authorized message
 NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {
@@ -206,4 +211,22 @@ SWAGGER_CONFIG = {
     "static_url_path": "/flasgger_static",
     "swagger_ui": True,
     "specs_route": "/docs/",
+}
+
+# Invalid JWT token related messages (used primarily in api_server.py)
+# Store plain payload dicts and status codes here; call jsonify() inside request handlers.
+INVALID_JWT_MESSAGES: Dict[str, Tuple[Dict[str, str], int]] = {
+    "missing_token": ({"error": "missing token"}, STATUS_CODES["unauthorized"]),
+    "invalid_token": (
+        {"error": "provided token is invalid"},
+        STATUS_CODES["unprocessable_entity"],
+    ),
+    "expired_token": (
+        {"error": "provided token is expired"},
+        STATUS_CODES["unauthorized"],
+    ),
+    "revoked_token": (
+        {"error": "provided token has been revoked"},
+        STATUS_CODES["unauthorized"],
+    ),
 }

@@ -1,27 +1,31 @@
 """
 API server for the application.
 This server handles incoming requests and routes them to the appropriate blueprints.
-It also provides a health check endpoint and a shutdown endpoint.
+Also provides a health check endpoint.
 """
 
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Tuple, Optional
 from os import listdir as os_listdir
 from os.path import join as os_path_join
 from os.path import dirname as os_path_dirname
 from os.path import abspath as os_path_abspath
 from importlib import import_module
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Blueprint
 from flask_jwt_extended import JWTManager
 from flask_marshmallow import Marshmallow
 from flasgger import Swagger
-import os
+import re
+import hashlib
+import hmac
+import unicodedata
+import sys
+from sqlalchemy.exc import OperationalError
 
 from api_blueprints.blueprints_utils import log, is_rate_limited
 from config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
     API_SERVER_DEBUG_MODE,
-    API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
     API_VERSION,
     URL_PREFIX,
@@ -36,10 +40,14 @@ from config import (
     API_SERVER_SSL,
     API_SERVER_SSL_CERT,
     API_SERVER_SSL_KEY,
+    API_SERVER_MAX_JSON_SIZE,
+    SQL_SCAN_MAX_LEN,
     SQL_PATTERN,
+    SQL_SCAN_MAX_RECURSION_DEPTH,
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
     SWAGGER_CONFIG,
+    INVALID_JWT_MESSAGES,
 )
 from models import db
 
@@ -216,77 +224,189 @@ ma = Marshmallow(main_api)
 # Initialize SQLAlchemy
 db.init_app(main_api)
 
+# Standardized error message constants for consistent JSON responses
+ERROR_MESSAGES = {
+    "bad_content_type": "Request body must be valid JSON with Content-Type: application/json",
+    "empty_body": "Request body must not be empty",
+    "invalid_json": "Invalid JSON format",
+    "rate_limited": "Rate limit exceeded",
+    "sql_injection_key": "Invalid JSON key: {key} suspected SQL injection",
+    "sql_injection_value": "Invalid JSON value for key '{key}': suspected SQL injection",
+    "sql_injection_path": "Invalid path variable: {key} suspected SQL injection",
+    "payload_too_large": "Request body or field too large",
+}
 
-def is_input_safe(data: Union[str, List[Any], Dict[Any, Any]]) -> bool:
+
+# Helper functions for pre-request checks
+def is_input_safe(
+    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]],
+    _current_recursion_depth: int = 0,
+    _max_recursion_depth: int = SQL_SCAN_MAX_RECURSION_DEPTH,
+) -> bool:
     """
-    Check if the input data (string, list, or dictionary) contains SQL instructions.
+    Check if the input data contains SQL instructions.
+
+    Improvements over previous implementation:
+    - Treats common scalar types (None, int, float, bool) as safe.
+    - Limits recursion depth to avoid excessive work on deeply nested payloads.
+    - Limits per-string scan length to the configured `SQL_SCAN_MAX_LEN` to avoid ReDoS.
+    - Does not raise TypeError for unknown scalars; instead coerces to str and scans.
+
     Returns True if safe, False if potentially unsafe.
-
-    :param data: str, list, or dict - The input data to validate.
-    :return: bool - True if the input is safe, False otherwise.
     """
+    # Protect against extremely deep recursion / malicious nesting
+    if _current_recursion_depth > _max_recursion_depth:
+        # treat overly deep structures as unsafe
+        return False
+
+    # None and scalar numeric/bool types are considered safe
+    if data is None or isinstance(data, (int, float, bool)):
+        return True
+
+    # Strings: check up to SQL_SCAN_MAX_LEN characters to avoid expensive scanning
     if isinstance(data, str):
-        return not bool(SQL_PATTERN.search(data))
-    if isinstance(data, list):
+        try:
+            to_scan = data if len(data) <= SQL_SCAN_MAX_LEN else data[:SQL_SCAN_MAX_LEN]
+        except Exception:
+            # If len() fails for some custom type masquerading as str, coerce and limit
+            s = str(data)
+            to_scan = s if len(s) <= SQL_SCAN_MAX_LEN else s[:SQL_SCAN_MAX_LEN]
+        return not bool(SQL_PATTERN.search(to_scan))
+
+    # Lists/tuples: check each element recursively, increasing depth
+    if isinstance(data, (list, tuple)):
+        # cheap safety: reject extremely large lists
+        if len(data) > 10000:
+            return False
         for item in data:
-            if isinstance(item, str) and SQL_PATTERN.search(item):
+            if not is_input_safe(
+                item,
+                _current_recursion_depth=_current_recursion_depth + 1,
+                _max_recursion_depth=_max_recursion_depth,
+            ):
+                return False
+        return True
+
+    # Dicts: check keys (if strings) and values recursively
+    if isinstance(data, dict):
+        # cheap safety: reject extremely large dicts
+        if len(data) > 10000:
+            return False
+        for key, value in data.items():
+            if isinstance(key, str):
+                key_to_scan = (
+                    key if len(key) <= SQL_SCAN_MAX_LEN else key[:SQL_SCAN_MAX_LEN]
+                )
+                if SQL_PATTERN.search(key_to_scan):
+                    return False
+            # Recurse for the value
+            if not is_input_safe(
+                value,
+                _current_recursion_depth=_current_recursion_depth + 1,
+                _max_recursion_depth=_max_recursion_depth,
+            ):
+                return False
+        return True
+
+    # For any other type, coerce to string and scan a limited slice
+    try:
+        s = str(data)
+        to_scan = s if len(s) <= SQL_SCAN_MAX_LEN else s[:SQL_SCAN_MAX_LEN]
+        return not bool(SQL_PATTERN.search(to_scan))
+    except Exception:
+        # If coercion fails, mark as unsafe
+        return False
+
+
+def _check_size_within_limit(
+    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]], max_len: int = None
+) -> bool:
+    """
+    Recursively ensure that no string in the provided data exceeds the configured
+    per-field limit. Returns True when within limits, False otherwise.
+    """
+    if max_len is None:
+        max_len = SQL_SCAN_MAX_LEN
+
+    if isinstance(data, str):
+        return len(data) <= max_len
+    if isinstance(data, (list, tuple)):
+        for item in data:
+            if not _check_size_within_limit(item, max_len=max_len):
                 return False
         return True
     if isinstance(data, dict):
-        # Check keys and values in the dictionary for SQL patterns
         for key, value in data.items():
-            if isinstance(key, str) and SQL_PATTERN.search(key):
+            # keys can be non-strings; only check string keys
+            if isinstance(key, str) and len(key) > max_len:
                 return False
-            if isinstance(value, str) and SQL_PATTERN.search(value):
+            if not _check_size_within_limit(value, max_len=max_len):
                 return False
         return True
-    else:
-        return "Input must be a string, list of strings, or dictionary with string keys and values."
+    # other types are not size-checked
+    return True
 
 
-@main_api.before_request
-def validate_user_data():
+def _validate_user_data() -> Optional[Tuple[Any, int]]:
     """
-    Validate user data for all incoming requests by checking for SQL injection,
-    JSON presence for methods that use them and JSON format.
-    This function is called before each request to ensure
-    that the data is safe and valid.
-    This does check for any endpoint specific validation, which should be done in the respective blueprint.
+    Helper: validate user data for incoming requests by checking for SQL injection.
+
+    Invoked by `pre_request_checks` handler so the execution order is explicit.
+
+    Returns:
+        Optional[Tuple[Any, int]]: Flask response tuple (body, status) when
+        validation fails, otherwise None.
     """
     # Validate JSON body for POST, PUT, PATCH methods
     if request.method in ["POST", "PUT", "PATCH"]:
+        # Quickly reject requests that declare an excessive Content-Length
+        if (
+            request.content_length is not None
+            and request.content_length > API_SERVER_MAX_JSON_SIZE
+        ):
+            return (
+                jsonify({"error": ERROR_MESSAGES["payload_too_large"]}),
+                STATUS_CODES.get("payload_too_large", 413),
+            )
+
         if not request.is_json or request.json is None:
             return (
-                jsonify(
-                    "Request body must be valid JSON with Content-Type: application/json"
-                ),
+                jsonify({"error": ERROR_MESSAGES["bad_content_type"]}),
                 STATUS_CODES["bad_request"],
             )
         try:
             data = request.get_json(silent=False)
             if data == {}:
                 return (
-                    jsonify("Request body must not be empty"),
+                    jsonify({"error": ERROR_MESSAGES["empty_body"]}),
                     STATUS_CODES["bad_request"],
                 )
         except ValueError:
-            return (jsonify("Invalid JSON format"), STATUS_CODES["bad_request"])
+            return (
+                jsonify({"error": ERROR_MESSAGES["invalid_json"]}),
+                STATUS_CODES["bad_request"],
+            )
+
+        # Ensure no individual string field is excessively large (recursive check)
+        if not _check_size_within_limit(data):
+            return (
+                jsonify({"error": ERROR_MESSAGES["payload_too_large"]}),
+                STATUS_CODES.get("payload_too_large", 413),
+            )
 
         # Validate JSON keys and values for SQL injection
         for key, value in data.items():
             if not is_input_safe(key):
                 return (
                     jsonify(
-                        {"error": f"Invalid JSON key: {key} suspected SQL injection"}
+                        {"error": ERROR_MESSAGES["sql_injection_key"].format(key=key)}
                     ),
                     STATUS_CODES["bad_request"],
                 )
             if isinstance(value, str) and not is_input_safe(value):
                 return (
                     jsonify(
-                        {
-                            "error": f"Invalid JSON value for key '{key}': suspected SQL injection"
-                        }
+                        {"error": ERROR_MESSAGES["sql_injection_value"].format(key=key)}
                     ),
                     STATUS_CODES["bad_request"],
                 )
@@ -297,58 +417,189 @@ def validate_user_data():
             if not is_input_safe(value):
                 return (
                     jsonify(
-                        {
-                            "error": f"Invalid path variable: {key} suspected SQL injection"
-                        }
+                        {"error": ERROR_MESSAGES["sql_injection_path"].format(key=key)}
                     ),
                     STATUS_CODES["bad_request"],
                 )
 
 
-@main_api.before_request
-def enforce_rate_limit():
+def _enforce_rate_limit() -> Optional[Tuple[Any, int]]:
     """
-    Enforce rate limiting for all incoming requests.
+    Helper: enforce rate limiting for incoming requests.
+    Uses `is_rate_limited` function imported from `api_blueprints.blueprints_utils`, TTLCache-based.
+    Rate limit related data is tracked per-client IP and shared between all blueprints and this main API server.
+
+    Invoked in a controlled order by `pre_request_checks` function.
     """
     if API_SERVER_RATE_LIMIT:  # Check if rate limiting is enabled
         client_ip = request.remote_addr
         if is_rate_limited(client_ip):
             return (
-                jsonify({"error": "Rate limit exceeded"}),
+                jsonify({"error": ERROR_MESSAGES["rate_limited"]}),
                 STATUS_CODES["too_many_requests"],
             )
+
+
+@main_api.before_request
+def pre_request_checks() -> Optional[Tuple[Any, int]]:
+    """
+    Combined before-request handler that runs all request-level validators in
+    a clearly documented order.
+
+    Behavior and order:
+    - Validation (_validate_user_data) runs first. If it returns a response
+      (indicating invalid input), that response is immediately returned to the
+      client.
+    - Rate limiting (_enforce_rate_limit) runs second. If it returns a
+      response (rate limit exceeded), that response is returned.
+
+    Note: Flask will call all registered `before_request` handlers in the
+    order they were registered. By centralizing into `pre_request_checks`, the
+    order becomes explicit and easier to reason about.
+    """
+    # Run validation first
+    resp = _validate_user_data()
+    if resp is not None:
+        return resp
+
+    # Then apply rate limiting
+    resp = _enforce_rate_limit()
+    if resp is not None:
+        return resp
+
+
+def _sanitize_callback(callback: object, max_len: int = 200, fp_len: int = 12):
+    """Normalize and redact untrusted callback text for safe logging.
+
+    Returns a tuple (short_snippet, fingerprint) where short_snippet is a
+    truncated, control-character-free, token-redacted string safe for logs,
+    and fingerprint is a short HMAC-SHA256/sha256 hex prefix for correlation.
+    """
+    # Ensure string form
+    raw = "" if callback is None else str(callback)
+
+    # Normalize unicode to a stable form
+    raw = unicodedata.normalize("NFKC", raw)
+
+    # Collapse newlines/tabs into space and remove control characters
+    raw = re.sub(r"[\r\n\t]+", " ", raw)
+    raw = "".join(ch if unicodedata.category(ch)[0] != "C" else "?" for ch in raw)
+
+    # Redact obvious JWTs (three base64url parts) and long base64-like tokens
+    raw = re.sub(
+        r"[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "<REDACTED_JWT>", raw
+    )
+    raw = re.sub(r"[A-Za-z0-9_\-]{20,}", "<REDACTED_TOKEN>", raw)
+
+    # Truncate to a safe length for logs
+    short = (raw[:max_len] + "...") if len(raw) > max_len else raw
+
+    # Compute fingerprint using HMAC with server secret if available, fallback to sha256
+    try:
+        key = (
+            JWT_SECRET_KEY if "JWT_SECRET_KEY" in globals() and JWT_SECRET_KEY else None
+        )
+        if key:
+            fp = hmac.new(
+                str(key).encode("utf-8"), str(callback).encode("utf-8"), hashlib.sha256
+            ).hexdigest()[:fp_len]
+        else:
+            fp = hashlib.sha256(str(callback).encode("utf-8")).hexdigest()[:fp_len]
+    except Exception:
+        fp = hashlib.sha256(short.encode("utf-8")).hexdigest()[:fp_len]
+
+    return short, fp
 
 
 # Handle unauthorized access (missing token)
 @jwt.unauthorized_loader
 def custom_unauthorized_response(callback):
-    return jsonify({"error": "Missing or invalid token"}), STATUS_CODES["unauthorized"]
+    # sanitize and fingerprint the callback before logging
+    cb_short, cb_fp = _sanitize_callback(callback)
+    log(
+        log_type="error",
+        message=f"api reached with missing token, callback: {cb_short} [fp:{cb_fp}]",
+        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+    )
+    return (
+        jsonify(INVALID_JWT_MESSAGES["missing_token"][0]),
+        INVALID_JWT_MESSAGES["missing_token"][1],
+    )
 
 
 # Handle invalid tokens
 @jwt.invalid_token_loader
 def custom_invalid_token_response(callback):
+    # sanitize and fingerprint the callback before logging
+    cb_short, cb_fp = _sanitize_callback(callback)
     log(
         log_type="error",
-        message=f"api reached with invalid token, callback: {callback}",
-        origin_name=API_SERVER_NAME_IN_LOG,
-        origin_host=API_SERVER_HOST,
-        message_id="UserAction",
+        message=f"api reached with invalid token, callback: {cb_short} [fp:{cb_fp}]",
         structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
     )
-    return jsonify({"error": "Invalid token"}), STATUS_CODES["unprocessable_entity"]
+    return (
+        jsonify(INVALID_JWT_MESSAGES["invalid_token"][0]),
+        INVALID_JWT_MESSAGES["invalid_token"][1],
+    )
+
+
+# Helper function to summarize JWT headers and payloads in logs
+def _summarize(d: dict, keys: tuple):
+    if not isinstance(d, dict):
+        return str(d)
+    out = {}
+    for k in keys:
+        if k in d:
+            v = d[k]
+            if isinstance(v, str) and len(v) > 64:
+                v = v[:64] + "..."  # truncate long values
+            out[k] = v
+    return out or {"keys": list(d.keys())[:5]}
 
 
 # Handle expired tokens
 @jwt.expired_token_loader
 def custom_expired_token_response(jwt_header, jwt_payload):
-    return jsonify({"error": "Token has expired"}), STATUS_CODES["unauthorized"]
+
+    header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
+    payload_summary = _summarize(
+        jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
+    )
+
+    log(
+        log_type="error",
+        message=(
+            "API reached with expired JWT. "
+            f"Header summary: {header_summary}; Payload summary: {payload_summary}"
+        ),
+        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+    )
+    return (
+        jsonify(INVALID_JWT_MESSAGES["expired_token"][0]),
+        INVALID_JWT_MESSAGES["expired_token"][1],
+    )
 
 
 # Handle revoked tokens (if applicable)
 @jwt.revoked_token_loader
 def custom_revoked_token_response(jwt_header, jwt_payload):
-    return jsonify({"error": "Token has been revoked"}), STATUS_CODES["unauthorized"]
+    header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
+    payload_summary = _summarize(
+        jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
+    )
+
+    log(
+        log_type="error",
+        message=(
+            "API reached with revoked JWT. "
+            f"Header summary: {header_summary}; Payload summary: {payload_summary}"
+        ),
+        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+    )
+    return (
+        jsonify(INVALID_JWT_MESSAGES["revoked_token"][0]),
+        INVALID_JWT_MESSAGES["revoked_token"][1],
+    )
 
 
 @main_api.route(f"/api/{API_VERSION}/health", methods=["GET"])
@@ -380,24 +631,119 @@ if __name__ == "__main__":
     blueprints_dir: str = os_path_join(
         os_path_dirname(os_path_abspath(__file__)), "api_blueprints"
     )
+
+    # Ensure the api_blueprints directory exists and contains at least one Python file
+    try:
+        entries = os_listdir(blueprints_dir)
+    except Exception as e:
+        log(
+            log_type="error",
+            message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {e}",
+            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+        )
+        print(f"ERROR: api_blueprints directory not found or inaccessible: {e}")
+        sys.exit(1)
+
+    # Require at least one .py file to proceed (avoid starting with an empty blueprints dir)
+    python_files = [f for f in entries if f.endswith(".py")]
+    if not python_files:
+        log(
+            log_type="error",
+            message=f"No Python files found in '{blueprints_dir}'. At least one file is required.",
+            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+        )
+        print(
+            f"ERROR: No Python files found in {blueprints_dir}; add at least one blueprint file."
+        )
+        sys.exit(1)
+
     for filename in os_listdir(blueprints_dir):
-        if filename.endswith("_bp.py"):  # Look for files ending with '_bp.py'
+        # Only consider Python files following the *_bp.py naming convention
+        if not filename.endswith("_bp.py"):
+            continue
 
-            # Import the module dynamically
-            module_name: str = filename[:-3]  # Remove the .py extension
-            module = import_module(f"api_blueprints.{module_name}")
+        module_name: str = filename[:-3]
+        full_module_name = f"api_blueprints.{module_name}"
 
-            # Get the Blueprint object (assumes the object has the same name as the file)
-            blueprint = getattr(module, module_name)
+        # Try importing the module; log and continue on failure
+        try:
+            module = import_module(full_module_name)
+        except Exception as e:
+            log(
+                log_type="error",
+                message=(
+                    f"Failed to import blueprint module '{full_module_name}': {e}"
+                ),
+                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            )
+            print(f"Skipping {full_module_name}: import failed: {e}")
+            continue
 
-            main_api.register_blueprint(
-                blueprint, url_prefix=URL_PREFIX
-            )  # Remove '_bp' for the URL prefix
-            print(f"Registered blueprint: {module_name} with prefix {URL_PREFIX}")
+        # Discover all flask.Blueprint instances in api_blueprints.<module>
+        found_blueprints = []
+        for attr_name in dir(module):
+            # skip private attributes quickly
+            if attr_name.startswith("_"):
+                continue
+            try:
+                attr = getattr(module, attr_name)
+            except Exception:
+                # If accessing an attribute raises, skip it (but don't crash startup)
+                continue
+
+            # Only accept actual Flask Blueprint instances
+            if isinstance(attr, Blueprint):
+                found_blueprints.append((attr_name, attr))
+
+        if not found_blueprints:
+            # If the module doesn't export a Blueprint, log a warning and continue
+            log(
+                log_type="warning",
+                message=(f"No Flask Blueprint found in module '{full_module_name}'."),
+                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            )
+            print(f"No blueprint found in {full_module_name}; skipping.")
+            continue
+
+        # Register all discovered Blueprints
+        for attr_name, blueprint in found_blueprints:
+            try:
+                main_api.register_blueprint(blueprint, url_prefix=URL_PREFIX)
+                print(
+                    f"Registered blueprint: {full_module_name}.{attr_name} with prefix {URL_PREFIX}"
+                )
+            except Exception as e:
+                log(
+                    log_type="error",
+                    message=(
+                        f"Failed to register blueprint '{full_module_name}.{attr_name}': {e}"
+                    ),
+                    structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                )
+                print(f"Failed to register {full_module_name}.{attr_name}: {e}")
 
     # Initialize the database inside the app context
     with main_api.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except OperationalError as e:
+            # Log a clear, structured message and exit cleanly so startup doesn't crash with an opaque traceback
+            log(
+                log_type="error",
+                message=f"Database connection failed during create_all: {e}",
+                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            )
+            print(
+                "\nERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config."
+            )
+            sys.exit(1)
+
+    # Log the server start
+    log(
+        log_type="info",
+        message="API server started",
+        structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+    )
 
     # Start the server
     main_api.run(
@@ -407,11 +753,4 @@ if __name__ == "__main__":
         ssl_context=(
             (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if API_SERVER_SSL else None
         ),
-    )
-
-    # Log the server start
-    log(
-        log_type="info",
-        message="API server started",
-        structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
     )

@@ -347,8 +347,8 @@ log_thread.start()
 
 
 def log(
-    message: str,
     log_type: str,
+    message: str,
     origin_name: str = API_SERVER_NAME_IN_LOG,
     origin_host: str = API_SERVER_HOST,
     message_id: str = "UserAction",
