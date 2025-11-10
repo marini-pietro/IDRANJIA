@@ -4,11 +4,12 @@ This server provides endpoints for user authentication, token validation, and he
 """
 
 import base64
+from binascii import Error as BinasciiError
 from typing import Dict, Union, List, Any
 from flask import Flask, request, jsonify
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
+from cryptography.exceptions import InvalidKey
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -39,6 +40,7 @@ from config import (
 from models import db, User
 from flasgger import Swagger
 
+
 # Initialize Flask app and SQLAlchemy
 auth_api = Flask(__name__)
 auth_api.config.update(
@@ -56,28 +58,61 @@ jwt = JWTManager(auth_api)
 swagger = Swagger(auth_api)
 
 # Check JWT secret key length
-if len(JWT_SECRET_KEY.encode("utf-8")) * 8 < 256:
-    raise RuntimeWarning("jwt secret key too short")
+# encode to utf-8 to get byte length and check if it's at least 32 bytes (256 bits)
+if len(JWT_SECRET_KEY.encode("utf-8")) < 32:
+    raise ValueError("jwt secret key too short")
 
 
 def verify_password(stored_password: str, provided_password: str) -> bool:
-    """Verify a password against a stored PBKDF2 hash."""
-    try:
-        salt_b64, hash_b64 = stored_password.split(":")
-        salt = base64.urlsafe_b64decode(salt_b64)
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-            backend=default_backend(),
-        )
-        kdf.verify(
-            provided_password.encode("utf-8"), base64.urlsafe_b64decode(hash_b64)
-        )
-        return True
-    except Exception:
-        return False
+  """Verify a password against a stored PBKDF2 hash with more specific exception handling."""
+  try:
+    salt_b64, hash_b64 = stored_password.split(":")
+  except ValueError:
+    # stored_password doesn't have the expected "salt:hash" format
+    log(
+      log_type="warning",
+      message="Stored password format invalid",
+      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_host=AUTH_SERVER_HOST,
+    )
+    return False
+
+  # local imports to avoid modifying global import section
+
+  try:
+    salt = base64.urlsafe_b64decode(salt_b64)
+    hash_bytes = base64.urlsafe_b64decode(hash_b64)
+  except (BinasciiError, ValueError):
+    # base64 decoding failed (malformed salt or hash)
+    log(
+      log_type="warning",
+      message="Base64 decoding failed for stored password components",
+      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_host=AUTH_SERVER_HOST,
+    )
+    return False
+
+  try:
+    kdf = PBKDF2HMAC(
+      algorithm=hashes.SHA256(),
+      length=32,
+      salt=salt,
+      iterations=100000,
+    )
+    kdf.verify(provided_password.encode("utf-8"), hash_bytes)
+    return True
+  except InvalidKey:
+    # password verification failed (wrong password)
+    return False
+  except Exception as exc:
+    # Catch-all for unexpected errors; log for troubleshooting
+    log(
+      log_type="error",
+      message=f"Unexpected error during password verification: {exc}",
+      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_host=AUTH_SERVER_HOST,
+    )
+    return False
 
 
 def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
@@ -155,7 +190,9 @@ def login():
     if not request.is_json or request.json is None:
         return (
             jsonify(
-                "Request body must be valid JSON with Content-Type: application/json"
+                {
+                    "error": "Request body must be valid JSON with Content-Type: application/json"
+                }
             ),
             STATUS_CODES["bad_request"],
         )
@@ -163,11 +200,11 @@ def login():
         data = request.get_json(silent=False)
         if not data:
             return (
-                jsonify("Request body must not be empty"),
+                jsonify({"error": "Request body must not be empty"}),
                 STATUS_CODES["bad_request"],
             )
     except Exception:
-        return jsonify("Invalid JSON format"), STATUS_CODES["bad_request"]
+        return jsonify({"error": "Invalid JSON format"}), STATUS_CODES["bad_request"]
 
     # Validate JSON keys and values for SQL injection
     for key, value in data.items():
@@ -199,7 +236,7 @@ def login():
 
     user = User.query.filter_by(email=email).first()
     if user and verify_password(user.password, password):
-        identity = user.email_utente
+        identity = user.email
         additional_claims = {"role": user.ruolo}
         access_token = create_access_token(
             identity=identity, additional_claims=additional_claims
@@ -207,6 +244,7 @@ def login():
         refresh_token = create_refresh_token(
             identity=identity, additional_claims=additional_claims
         )
+        # Logging the successful login event
         log(
             log_type="info",
             message=f"User {email} logged in",
@@ -279,7 +317,25 @@ def refresh():
         description: Invalid or expired refresh token
     """
     identity = get_jwt_identity()
-    new_access_token = create_access_token(identity=identity)
+    # Preserve custom claims from the refresh token (e.g. role) when issuing a new access token
+    user_role = get_jwt().get("role")
+    additional_claims = {"role": user_role} if user_role is not None else None
+    # create_access_token expects additional_claims to be a dict or omitted
+    if additional_claims:
+        new_access_token = create_access_token(
+            identity=identity, additional_claims=additional_claims
+        )
+    else:
+        new_access_token = create_access_token(identity=identity)
+
+    # Logging the token refresh event
+    log(
+        log_type="info",
+        message=f"Access token refreshed for identity {identity}",
+        origin_name=AUTH_SERVER_NAME_IN_LOG,
+        origin_host=AUTH_SERVER_HOST,
+        structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+    )
     return jsonify({"access_token": new_access_token}), STATUS_CODES["ok"]
 
 
@@ -309,14 +365,6 @@ def health_check():
 
 
 if __name__ == "__main__":
-    auth_api.run(
-        host=AUTH_SERVER_HOST,
-        port=AUTH_SERVER_PORT,
-        debug=AUTH_SERVER_DEBUG_MODE,
-        ssl_context=(
-            (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
-        ),
-    )
     log(
         log_type="info",
         message="Authentication server started",
@@ -324,4 +372,12 @@ if __name__ == "__main__":
         origin_host=AUTH_SERVER_HOST,
         message_id="ServerAction",
         structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+    )
+    auth_api.run(
+        host=AUTH_SERVER_HOST,
+        port=AUTH_SERVER_PORT,
+        debug=AUTH_SERVER_DEBUG_MODE,
+        ssl_context=(
+            (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
+        ),
     )
