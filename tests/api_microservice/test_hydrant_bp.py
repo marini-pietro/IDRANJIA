@@ -1,6 +1,5 @@
 from api_blueprints import hydrant_bp
 from api_blueprints import blueprints_utils as bu
-import pytest
 
 # This file contains unit tests for the Hydrant Blueprint defined in hydrant_bp.py
 
@@ -23,4 +22,5 @@ def test_hydrant_post_resource_options():
     cls = hydrant_bp.HydrantPostResource
     resp = bu.handle_options_request(cls)
     assert resp.status_code == 200
-    assert "POST" in resp.headers["Allow"] or "OPTIONS" in resp.headers["Allow"]
+    # Ensure POST is allowed for the POST resource's OPTIONS response
+    assert "POST" in resp.headers["Allow"]

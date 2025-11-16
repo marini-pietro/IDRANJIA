@@ -1,15 +1,13 @@
-import time
-import types
 from api_blueprints import blueprints_utils as bu
 import log_server
 
 # This file contains unit tests for the functions and features defined in log_server.py
 
 
-def test_enforce_rate_limit_counters(monkeypatch):
+def test_enforce_rate_limit_counters():
     # Clear the shared rate limit cache to reset environment
     bu.rate_limit_cache.clear()
-    CLIENT_IP = "1.2.3.4"  # Arbitrary CLIENT_IP IP for testing
+    CLIENT_IP = "1.2.3.4"  # Arbitrary client IP for testing
     max_req = (
         log_server.RATE_LIMIT_MAX_REQUESTS
     )  # Get max requests from log_server (defined in config file originally)

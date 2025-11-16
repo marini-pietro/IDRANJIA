@@ -1,8 +1,6 @@
-import json
 from api_blueprints import user_bp
 from api_blueprints import blueprints_utils as bu
 from api_server import main_api
-import types
 
 # This file contains unit tests for the User Blueprint defined in user_bp.py
 
