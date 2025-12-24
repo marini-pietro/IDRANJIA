@@ -39,13 +39,22 @@ api = Api(user_bp)
 
 
 # Define schemas
+
+def safe_string(value):
+  if not isinstance(value, str):
+    raise ValidationError("Must be a string.")
+  if ("<" in value or ">" in value or
+    re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)):
+    raise ValidationError("Invalid characters in string.")
+  return value
+
 class UserSchema(ma.Schema):
-    email = fields.Email(required=True)
-    comune = fields.String(required=True)
-    nome = fields.String(required=True)
-    cognome = fields.String(required=True)
-    admin = fields.Boolean(required=True)
-    password = fields.String(required=True)
+  email = fields.Email(required=True)
+  comune = fields.String(required=True)
+  nome = fields.String(required=True, validate=safe_string)
+  cognome = fields.String(required=True, validate=safe_string)
+  admin = fields.Boolean(required=True)
+  password = fields.String(required=True)
 
 
 user_schema = UserSchema()

@@ -27,10 +27,19 @@ api = Api(operator_bp)
 
 
 # Define schemas
+
+def safe_string(value):
+  if not isinstance(value, str):
+    raise ValidationError("Must be a string.")
+  if ("<" in value or ">" in value or
+    re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)):
+    raise ValidationError("Invalid characters in string.")
+  return value
+
 class OperatorSchema(ma.Schema):
-    CF = fields.String(required=True)
-    nome = fields.String(required=True)
-    cognome = fields.String(required=True)
+  CF = fields.String(required=True)
+  nome = fields.String(required=True, validate=safe_string)
+  cognome = fields.String(required=True, validate=safe_string)
 
 
 operator_schema = OperatorSchema()

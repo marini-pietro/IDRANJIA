@@ -9,6 +9,7 @@ from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
 from marshmallow import fields, ValidationError
 from typing import List
+import re
 from .blueprints_utils import (
     check_authorization,
     log,
@@ -32,15 +33,24 @@ api = Api(photo_bp)
 
 
 # Marshmallow Schemas
-class PhotoSchema(ma.Schema):
-    """
-    Schema for validating and serializing photo data.
-    This schema defines the fields required for a photo associated with a hydrant.
-    """
+def safe_string(value):
+  if not isinstance(value, str):
+    raise ValidationError("Must be a string.")
+  # Reject <, >, javascript:, and control chars
+  if ("<" in value or ">" in value or
+    re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)):
+    raise ValidationError("Invalid characters in string.")
+  return value
 
-    id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
-    posizione = fields.String(required=True)
-    data = fields.Date(required=True)
+class PhotoSchema(ma.Schema):
+  """
+  Schema for validating and serializing photo data.
+  This schema defines the fields required for a photo associated with a hydrant.
+  """
+
+  id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
+  posizione = fields.String(required=True, validate=safe_string)
+  data = fields.Date(required=True)
 
 
 # Create the schema instance
