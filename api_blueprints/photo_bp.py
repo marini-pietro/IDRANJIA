@@ -3,13 +3,19 @@ Blueprint for managing hydrant photos.
 This module provides endpoints to create, read, update, and delete photos associated with hydrants.
 """
 
+# Library imports
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
 from marshmallow import fields, ValidationError
+from sqlalchemy import exists
 from typing import List
 import re
+
+# Local imports
+from models import db, Photo, Hydrant
+from api_server import ma
 from .blueprints_utils import (
     check_authorization,
     log,
@@ -17,12 +23,9 @@ from .blueprints_utils import (
     handle_options_request,
     get_hateos_location_string,
 )
-from api_server import ma
 from config import (
     STATUS_CODES,
 )
-from models import db, Photo, Hydrant
-from sqlalchemy import exists
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -44,11 +47,11 @@ def safe_string(value):
 
 class PhotoSchema(ma.Schema):
   """
-  Schema for validating and serializing photo data.
+  Schema for validating and serializing photo data.  
   This schema defines the fields required for a photo associated with a hydrant.
   """
 
-  id_idrante = fields.Integer(required=True, validate=lambda x: x >= 0)
+  id_idrante = fields.Integer(required=True, validate=lambda x: x > 0)
   posizione = fields.String(required=True, validate=safe_string)
   data = fields.Date(required=True)
 
@@ -59,7 +62,7 @@ photo_schema = PhotoSchema()
 
 class PhotoResource(Resource):
     """
-    Photo resource for managing hydrant photos.
+    Photo resource for managing hydrant photos.  
     This class provides methods to create, read, update, and delete photos associated with hydrants.
     """
 
@@ -211,14 +214,14 @@ class PhotoResource(Resource):
         """
 
         # Validate the ID
-        if id_ < 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "photo id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        photo = Photo.query.get(id_)
-        if photo is None:
+        photo = Photo.query.get(id_) # Retrieve the photo by ID
+        if photo is None: # If a photo with specified ID is not found
             return create_response(
                 message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -234,8 +237,11 @@ class PhotoResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
+		# Update the photo fields
         for key, value in data.items():
             setattr(photo, key, value)
+            
+		# Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -291,14 +297,14 @@ class PhotoResource(Resource):
         """
 
         # Validate the ID
-        if id_ < 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "photo id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        photo = Photo.query.get(id_)
-        if photo is None:
+        photo = Photo.query.get(id_) # Retrieve the photo by ID
+        if photo is None: # If a photo with specified ID is not found
             return create_response(
                 message={"error": "photo with specified id not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -412,7 +418,7 @@ class PhotoPostResource(Resource):
         position = data["posizione"]
         date = data["data"]
 
-        # Optimized check that hydrant exists (should check Hydrant, not Photo)
+        # Optimized check that related hydrant exists
         hydrant_exists: bool = db.session.query(
             exists().where(Hydrant.id == hydrant_id)
         ).scalar()
@@ -435,9 +441,13 @@ class PhotoPostResource(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        # Insert the new photo into the database
+		# Create a new photo instance
         new_photo = Photo(id_idrante=hydrant_id, posizione=position, data=date)
+        
+		# Insert the new photo into the database
         db.session.add(new_photo)
+        
+		# Commit the changes to the database
         db.session.commit()
 
         # Log the action

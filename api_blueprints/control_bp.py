@@ -3,6 +3,7 @@ Control blueprint for managing control records in the database.
 This module provides endpoints to create, read, update, and delete control records.
 """
 
+# Library imports
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
@@ -16,11 +17,13 @@ from .blueprints_utils import (
     get_hateos_location_string,
     handle_options_request,
 )
+
+# Local imports
 from api_server import ma
+from models import db, Control, Hydrant
 from config import (
     STATUS_CODES,
 )
-from models import db, Control, Hydrant
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -33,11 +36,11 @@ api = Api(control_bp)
 # Define schema
 class ControlSchema(ma.Schema):
     """
-    Schema for validating and serializing Control data.
+    Schema for validating and serializing Control data.  
     This schema defines the fields required for a control record.
     """
 
-    id_controllo = fields.Integer(dump_only=True)  # read-only
+    id_controllo = fields.Integer(dump_only=True, validate=lambda x: x > 0) # dump-only means read-only
     tipo = fields.String(required=True)
     esito = fields.Boolean(required=True)
     data = fields.Date(required=True)
@@ -50,9 +53,9 @@ control_schema = ControlSchema()
 
 class ControlResource(Resource):
     """
-    Resource for managing control records.
-    This class provides methods to handle HTTP requests for control records.
-    It supports GET, POST, PATCH, DELETE, and OPTIONS methods.
+    Resource for managing control records.  
+    This class provides methods to handle HTTP requests for control records.  
+    It supports GET, POST, PATCH, DELETE, and OPTIONS methods.  
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}/<int:id_>"]
@@ -197,8 +200,8 @@ class ControlResource(Resource):
             description: Control or hydrant not found
         """
         try:
-            # Allow partial updates
-            data = control_schema.load(request.get_json(), partial=True)
+            # Load input
+            data = control_schema.load(request.get_json(), partial=True) # partial=true to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -299,7 +302,7 @@ class ControlResource(Resource):
         """
 
         # Validate the ID
-        if id_ < 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
@@ -315,8 +318,10 @@ class ControlResource(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Delete the control
+        # Delete the control resorce
         db.session.delete(control)
+
+        # Commit the changes
         db.session.commit()
 
         # Log the action
@@ -353,9 +358,9 @@ class ControlResource(Resource):
 
 class ControlPostResource(Resource):
     """
-    Resource for creating new control records.
-    This class provides a method to handle POST requests for control records.
-    Separated from ControlResource because it is the easiest way to force different endpoints paths.
+    Resource for creating new control records.  
+    This class provides a method to handle POST requests for control records.  
+    Separated from ControlResource because it is the easiest way to force different endpoints paths.  
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]
@@ -436,13 +441,15 @@ class ControlPostResource(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-        # Create a new Control instance
+        # Create a new Control resource instance
         new_control = Control(
             tipo=tipo, esito=esito, data=data_esecuzione, id_idrante=id_idrante
         )
 
-        # Add to session and commit
+        # Add to session
         db.session.add(new_control)
+
+        # Commit the changes
         db.session.commit()
 
         # Log the action

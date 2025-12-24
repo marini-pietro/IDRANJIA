@@ -5,7 +5,7 @@ and logs messages to both console and file.
 It also handles delayed logs when the rate limit is exceeded.
 """
 
-# Import necessary libraries
+# Library imports
 import re as regex_lib
 import logging
 import time
@@ -19,6 +19,8 @@ from threading import Thread, Lock
 from os.path import abspath as os_path_abspath
 from os.path import dirname as os_path_dirname
 from os.path import join as os_path_join
+
+# Local imports
 from config import (
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
@@ -76,7 +78,7 @@ class Logger:
     # debug, info, warning, error, critical
     def log(self, log_type: str, message: str, origin: str) -> None:
         """
-        Log a message with the specified type, message and origin
+        Log a message with the specified type, message and origin.
         """
 
         log_method = getattr(
@@ -91,9 +93,8 @@ class Logger:
         """
         Close all handlers of the logger.
         """
-        for handler in self.logger.handlers[
-            :
-        ]:  # [:] copies the list to avoid modification during iteration
+
+        for handler in self.logger.handlers[:]: # [:] copies the list to avoid modification during iteration
             handler.close()
             self.logger.removeHandler(handler)
 
@@ -224,7 +225,7 @@ def start_syslog_server(host: str, port: int) -> None:
             if not events:  # If there are no events, continue to the next iteration
                 continue
             for key, _ in events:
-                sock = key.fileobj
+                sock = key.fileobj # Get the socket object from the selector key
                 try:
                     # Receive data from the socket
                     data, addr = sock.recvfrom(
@@ -308,6 +309,7 @@ def enforce_rate_limit(client_ip: str) -> bool:
     """
     Check if the client IP is rate-limited using an in-memory TTLCache.
     """
+
     with rate_limit_lock:
         # Retrieve or initialize client data
         client_data = rate_limit_cache.get(client_ip, {"count": 0})
@@ -337,7 +339,8 @@ def process_syslog_message(message: str, addr: tuple) -> None:
     -------
     None
     """
-    source_ip = addr[0]
+
+    source_ip = addr[0]  # Extract source IP from address tuple
 
     # Enforce rate limit
     if LOG_SERVER_RATE_LIMIT is True:
@@ -480,4 +483,5 @@ def process_delayed_logs() -> None:
 Thread(target=process_delayed_logs, daemon=True).start()
 
 if __name__ == "__main__":
+    # Start the syslog server
     start_syslog_server(LOG_SERVER_HOST, LOG_SERVER_PORT)

@@ -9,6 +9,8 @@ This module contains the configuration settings for the API server, including:
 """
 
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
 from typing import Dict, Set, Tuple
 from datetime import timedelta
 
@@ -29,6 +31,13 @@ JWT_VALIDATION_CACHE_SIZE: int = 1000  # The size of the cache for token validat
 JWT_VALIDATION_CACHE_TTL: int = (
     3600  # The time-to-live for the token validation cache (seconds)
 )
+# PBKDF2 HMAC settings for password hashing
+PBKDF2HMAC_SETTINGS: Dict[str, int] = {
+    "algorithm": hashes.SHA256(),
+    "length": 32,
+    "iterations": 100000,
+    "backend": default_backend(),
+}
 
 # Log server related settings
 LOG_SERVER_HOST: str = "localhost"  # The host of the log server

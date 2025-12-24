@@ -1,7 +1,15 @@
+""""
+Hydrant Blueprint Module
+This module defines the Flask Blueprint for managing hydrant resources. 
+It includes endpoints for creating, reading, updating, and deleting hydrant records in the database.
+"""
+
+# Library imports
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
 from flask_jwt_extended import jwt_required
+from marshmallow import fields, ValidationError
 from typing import Dict, Union, Any
 from .blueprints_utils import (
     check_authorization,
@@ -10,15 +18,13 @@ from .blueprints_utils import (
     handle_options_request,
     get_hateos_location_string,
 )
+
+# Local imports
 from api_server import ma
+from models import db, Hydrant, User
 from config import (
-    API_SERVER_HOST,
-    API_SERVER_PORT,
-    API_SERVER_NAME_IN_LOG,
     STATUS_CODES,
 )
-from marshmallow import fields, ValidationError
-from models import db, Hydrant, User
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -31,11 +37,11 @@ api = Api(hydrant_bp)
 # Define schemas
 class HydrantSchema(ma.Schema):
     """
-    Schema for validating and serializing Hydrant data.
+    Schema for validating and serializing Hydrant data.  
     This schema defines the fields required for a hydrant record.
     """
 
-    id = fields.Integer(dump_only=True)  # read-only
+    id = fields.Integer(dump_only=True, validate=lambda x: x > 0) # dump-only means read-only
     stato = fields.String(required=True)
     latitudine = fields.Float(required=True)
     longitudine = fields.Float(required=True)
@@ -52,7 +58,7 @@ hydrant_schema = HydrantSchema()
 
 class HydrantResource(Resource):
     """
-    Hydrant resource for managing hydrant data.
+    Hydrant resource for managing hydrant data.  
     This class provides methods to create, read, update, and delete hydrant records.
     """
 
@@ -217,9 +223,9 @@ class HydrantResource(Resource):
             description: Hydrant not found
         """
 
-        # Allow partial updates
+        # Load input data
         try:
-            data = hydrant_schema.load(request.get_json(), partial=True)
+            data = hydrant_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -227,14 +233,14 @@ class HydrantResource(Resource):
             )
 
         # Validate the ID
-        if id_ < 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "id_ must be positive integer"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
         # Gather data from the database
-        hydrant = Hydrant.query.filter_by(id=id_).first()
+        hydrant: Hydrant = Hydrant.query.filter_by(id=id_).first()
 
         # Check if the hydrant exists
         if hydrant is None:
@@ -258,6 +264,7 @@ class HydrantResource(Resource):
         for key, value in data.items():
             setattr(hydrant, key, value)
 
+		    # Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -313,7 +320,7 @@ class HydrantResource(Resource):
         """
 
         # Validate the ID
-        if id_ < 0:
+        if id_ <= 0:
             return create_response(
                 message={"error": "id_ must be positive integer."},
                 status_code=STATUS_CODES["bad_request"],
@@ -327,7 +334,10 @@ class HydrantResource(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
+		# Delete the hydrant from the database
         db.session.delete(hydrant)
+        
+		# Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -365,9 +375,9 @@ class HydrantResource(Resource):
 
 class HydrantPostResource(Resource):
     """
-    Resource for creating new hydrants.
-    This class provides a method to create a new hydrant record.
-    Separated from HydrantResource because it is the easiest way to force different endpoints paths.
+    Resource for creating new hydrants.  
+    This class provides a method to create a new hydrant record.  
+    Separated from HydrantResource because it is the easiest way to force different endpoints paths.  
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]
@@ -432,7 +442,7 @@ class HydrantPostResource(Resource):
             description: Invalid input or user not found
         """
 
-        # Validate and deserialize input
+        # Load input data
         try:
             data = hydrant_schema.load(request.get_json())
         except ValidationError as err:
@@ -446,6 +456,7 @@ class HydrantPostResource(Resource):
             db.session.query(User).filter_by(email=identity).exists()
         ).scalar()
 
+		# If the email does not exist, return an error
         if email_exists is False:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
@@ -461,6 +472,7 @@ class HydrantPostResource(Resource):
             )
         ).scalar()
 
+		# If the hydrant already exists, return an error
         if hydrant_exists is True:
             return create_response(
                 message={
@@ -481,7 +493,11 @@ class HydrantPostResource(Resource):
             accessibilità=data["accessibilità"],
             email_ins=identity,
         )
+        
+		# Add the new hydrant to the database
         db.session.add(new_hydrant)
+        
+		# Commit the changes to the database
         db.session.commit()
 
         # Log the action

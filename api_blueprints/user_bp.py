@@ -1,5 +1,13 @@
+"""
+UserResource blueprint for managing user-related operations.
+This module defines the UserResource class, which handles CRUD operations
+for user entities in the database.
+"""
+
+# Library imports
 import os
 import base64
+import re
 from os.path import basename as os_path_basename
 from typing import List, Dict, Any, Union
 from flask import Blueprint, request, Response
@@ -8,13 +16,13 @@ from flask_jwt_extended import jwt_required
 from requests import post as requests_post
 from requests.exceptions import RequestException
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 from marshmallow import fields, ValidationError
 
+# Local imports
 from config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
+    PBKDF2HMAC_SETTINGS,
     STATUS_CODES,
     LOGIN_AVAILABLE_THROUGH_API,
     AUTH_SERVER_SSL,
@@ -38,8 +46,7 @@ user_bp = Blueprint(BP_NAME, __name__)
 api = Api(user_bp)
 
 
-# Define schemas
-
+# Define schemas and validation function
 def safe_string(value):
   if not isinstance(value, str):
     raise ValidationError("Must be a string.")
@@ -57,21 +64,24 @@ class UserSchema(ma.Schema):
   password = fields.String(required=True)
 
 
+# Create an instance of the schema
 user_schema = UserSchema()
 
 
 def hash_password(password: str) -> str:
+    
     # Generate a random salt
     salt = os.urandom(16)
 
     # Use PBKDF2 to hash the password
     kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
+        algorithm=PBKDF2HMAC_SETTINGS["algorithm"],
+        length=PBKDF2HMAC_SETTINGS["length"],
         salt=salt,
-        iterations=100000,
-        backend=default_backend(),
+        iterations=PBKDF2HMAC_SETTINGS["iterations"],
+        backend=PBKDF2HMAC_SETTINGS["backend"],
     )
+    # Derive the hashed password
     hashed_password = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
     # Store the salt and hashed password together as "salt:hash"
@@ -79,6 +89,9 @@ def hash_password(password: str) -> str:
 
 
 class UserResource(Resource):
+    """
+    UserResource for managing user-related CRUD operations.
+    """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}/<string:email>"]
 
@@ -215,9 +228,10 @@ class UserResource(Resource):
           404:
             description: User not found
         """
+        
+        # Load input data
         try:
-            # Allow partial updates
-            data = user_schema.load(request.get_json(), partial=True)
+            data = user_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -226,7 +240,7 @@ class UserResource(Resource):
 
         # Check if the user exists in the database using ORM
         user = User.query.filter_by(email=email).first()
-        if not user:
+        if not user: # If user is not found return an error message
             return create_response(
                 message={"error": "user not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -292,9 +306,9 @@ class UserResource(Resource):
             description: User not found
         """
 
-        user = User.query.filter_by(email=email).first()
+        user = User.query.filter_by(email=email).first() # Check if the user exists in the database
 
-        if user is None:
+        if user is None: # If user is not found return an error message
             return create_response(
                 message={"error": "user not found with provided email"},
                 status_code=STATUS_CODES["not_found"],
@@ -302,6 +316,8 @@ class UserResource(Resource):
 
         # Execute the delete query
         db.session.delete(user)
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the deletion
@@ -337,7 +353,7 @@ class UserResource(Resource):
 
 class UserPostResource(Resource):
     """
-    UserResource post resource for creating new users.
+    UserResource post resource for creating new users.  
     This class handles the following HTTP methods:
     - POST: Create a new user
     - OPTIONS: Get allowed HTTP methods for this endpoint
@@ -400,8 +416,9 @@ class UserPostResource(Resource):
           409:
             description: User already exists
         """
+        
+        # Load input data
         try:
-            # Validate and deserialize input
             data = user_schema.load(request.get_json())
         except ValidationError as err:
             return create_response(
@@ -436,7 +453,11 @@ class UserPostResource(Resource):
             cognome=cognome,
             admin=admin,
         )
+
+        # Add the new user to the database
         db.session.add(new_user)
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the creation
@@ -475,16 +496,19 @@ class UserPostResource(Resource):
 
 
 class UserLoginSchema(ma.Schema):
+    """
+    Schema for validating user login data.
+    """
     email = fields.Email(required=True)
     password = fields.String(required=True)
 
-
+# Create an instance of the schema
 user_login_schema = UserLoginSchema()
 
 
 class UserLogin(Resource):
     """
-    UserResource login resource for managing user authentication.
+    UserResource login resource for managing user authentication.  
     This class handles the following HTTP methods:
     - POST: UserResource login
     - OPTIONS: Get allowed HTTP methods for this endpoint
@@ -584,49 +608,51 @@ class UserLogin(Resource):
         # Handle response from the authentication service
         if (
             response.status_code == STATUS_CODES["ok"]
-        ):  # If the login is successful, send the token back to the user
-
-            # Logging login is already handled by auth server
-
+        ): 
+            # If the login is successful, send the token back to the user
+            # Logging login is already handled by auth server so just return the response
             return create_response(
                 message=response.json(), status_code=STATUS_CODES["ok"]
             )
 
-        if response.status_code == STATUS_CODES["unauthorized"]:
-            log(
+        if response.status_code == STATUS_CODES["unauthorized"]: # Invalid credentials
+            log( # Log the failed login attempt
                 log_type="warning",
                 message=f"Failed login attempt for email: {email}",
                 structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
+            # Return unauthorized response
             return create_response(
                 message={"error": "Invalid credentials"},
                 status_code=STATUS_CODES["unauthorized"],
             )
 
-        elif response.status_code == STATUS_CODES["bad_request"]:
-            log(
+        elif response.status_code == STATUS_CODES["bad_request"]: # Bad request
+            log( # Log the bad request
                 log_type="error",
                 message=f"Bad request during login for email: {email}",
                 structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
+            # Return bad request response
             return create_response(
                 message={"error": "Bad request"},
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        elif response.status_code == STATUS_CODES["internal_error"]:
-            log(
+        elif response.status_code == STATUS_CODES["internal_error"]: # Internal server error
+            log( # Log the internal error
                 log_type="error",
                 message=f"Internal error during login for email: {email}",
                 structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
+            # Return internal error response
             return create_response(
                 message={"error": "Internal error"},
                 status_code=STATUS_CODES["internal_error"],
             )
 
         else:
-            log(
+            log( # Log any unexpected errors
                 log_type="error",
                 message=(
                     f"Unexpected error during login for email: {email} "
@@ -634,6 +660,7 @@ class UserLogin(Resource):
                 ),
                 structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
             )
+            # Return generic internal error response
             return create_response(
                 message={"error": "Unexpected error during login"},
                 status_code=STATUS_CODES["internal_error"],

@@ -1,3 +1,9 @@
+"""
+Blueprint for operator-related API endpoints.
+Provides CRUD operations for operator resources identified by their CF.
+"""
+
+# Library imports
 from os.path import basename as os_path_basename
 from flask import Blueprint, request, Response
 from flask_restful import Api, Resource
@@ -5,6 +11,10 @@ from flask_jwt_extended import jwt_required
 from typing import Dict, Union, Any
 from marshmallow import fields, ValidationError
 import re
+
+# Local imports
+from models import db, Operator
+from api_server import ma
 from .blueprints_utils import (
     check_authorization,
     log,
@@ -12,11 +22,9 @@ from .blueprints_utils import (
     get_hateos_location_string,
     handle_options_request,
 )
-from api_server import ma
 from config import (
     STATUS_CODES,
 )
-from models import db, Operator
 
 # Define constants
 BP_NAME = os_path_basename(__file__).replace("_bp.py", "")
@@ -26,8 +34,7 @@ operator_bp = Blueprint(BP_NAME, __name__)
 api = Api(operator_bp)
 
 
-# Define schemas
-
+# Define schemas and validation function
 def safe_string(value):
   if not isinstance(value, str):
     raise ValidationError("Must be a string.")
@@ -42,12 +49,13 @@ class OperatorSchema(ma.Schema):
   cognome = fields.String(required=True, validate=safe_string)
 
 
+# Instantiate the schema
 operator_schema = OperatorSchema()
 
 
 class OperatorResource(Resource):
     """
-    Resource for managing operators.
+    Resource for managing operators.  
     This class provides methods to get, update, and delete operator records by their CF.
     """
 
@@ -180,9 +188,9 @@ class OperatorResource(Resource):
             description: Operator not found
         """
 
+		# Load input data
         try:
-            # Validate and deserialize input (all fields optional)
-            data = operator_schema.load(request.get_json(), partial=True)
+            data = operator_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -295,6 +303,8 @@ class OperatorResource(Resource):
 
         # Delete the operator
         db.session.delete(operator)
+        
+		# Commit the changes to the database
         db.session.commit()
 
         # Return the response
@@ -379,6 +389,7 @@ class OperatorPostResource(Resource):
                 message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
+        
         cf = data["CF"]
         name = data["nome"]
         surname = data["cognome"]
@@ -394,8 +405,10 @@ class OperatorPostResource(Resource):
         # Create a new operator instance
         new_operator = Operator(CF=cf, nome=name, cognome=surname)
 
-        # Add and commit the new operator to the database
+        # Add the new operator to the database
         db.session.add(new_operator)
+        
+		# Commit the changes to the database
         db.session.commit()
 
         # Log the action

@@ -226,8 +226,8 @@ def get_hateos_location_string(bp_name: str, id_: Union[str, int]) -> str:
 
 def handle_options_request(resource_class) -> Response:
     """
-    Handles OPTIONS requests for the resources.
-    This method is used to determine the allowed HTTP methods for this resource.
+    Handles OPTIONS requests for the resources.  
+    This method is used to determine the allowed HTTP methods for this resource.  
     It returns a 200 OK response with the allowed methods in the Allow header.
     """
 

@@ -4,6 +4,7 @@ This server handles incoming requests and routes them to the appropriate bluepri
 Also provides a health check endpoint.
 """
 
+# Library imports
 from typing import Union, List, Dict, Any, Tuple, Optional
 from os import listdir as os_listdir
 from os.path import join as os_path_join
@@ -21,7 +22,9 @@ import unicodedata
 import sys
 from sqlalchemy.exc import OperationalError
 
+# Local imports
 from api_blueprints.blueprints_utils import log, is_rate_limited
+from models import db
 from config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
@@ -49,7 +52,6 @@ from config import (
     SWAGGER_CONFIG,
     INVALID_JWT_MESSAGES,
 )
-from models import db
 
 # Create a Flask app
 main_api = Flask(__name__)
@@ -192,6 +194,7 @@ main_api.config["SWAGGER"] = {
     "uiversion": 3,
     "openapi": "3.0.2",
 }
+# Initialize Swagger
 swagger = Swagger(main_api, template=swagger_template, config=SWAGGER_CONFIG)
 
 # Configure JWT validation settings
@@ -319,22 +322,25 @@ def is_input_safe(
 
 
 def _check_size_within_limit(
-    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]], max_len: int = None
+    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]], max_len: int = SQL_SCAN_MAX_LEN
 ) -> bool:
     """
     Recursively ensure that no string in the provided data exceeds the configured
     per-field limit. Returns True when within limits, False otherwise.
     """
-    if max_len is None:
-        max_len = SQL_SCAN_MAX_LEN
 
+    # check string length
     if isinstance(data, str):
         return len(data) <= max_len
+    
+    # check lists/tuples recursively
     if isinstance(data, (list, tuple)):
         for item in data:
             if not _check_size_within_limit(item, max_len=max_len):
                 return False
         return True
+    
+    # check dicts recursively
     if isinstance(data, dict):
         for key, value in data.items():
             # keys can be non-strings; only check string keys
@@ -343,6 +349,7 @@ def _check_size_within_limit(
             if not _check_size_within_limit(value, max_len=max_len):
                 return False
         return True
+    
     # other types are not size-checked
     return True
 
@@ -357,6 +364,7 @@ def _validate_user_data() -> Optional[Tuple[Any, int]]:
         Optional[Tuple[Any, int]]: Flask response tuple (body, status) when
         validation fails, otherwise None.
     """
+
     # Validate JSON body for POST, PUT, PATCH methods
     if request.method in ["POST", "PUT", "PATCH"]:
         # Quickly reject requests that declare an excessive Content-Length
@@ -369,13 +377,16 @@ def _validate_user_data() -> Optional[Tuple[Any, int]]:
                 STATUS_CODES.get("payload_too_large", 413),
             )
 
+        # Ensure Content-Type is application/json and body is valid JSON
         if not request.is_json or request.json is None:
             return (
                 jsonify({"error": ERROR_MESSAGES["bad_content_type"]}),
                 STATUS_CODES["bad_request"],
             )
+        
+        # Parse JSON body
         try:
-            data = request.get_json(silent=False)
+            data = request.get_json(silent=False) # silent=False to raise on invalid JSON
             if data == {}:
                 return (
                     jsonify({"error": ERROR_MESSAGES["empty_body"]}),
@@ -431,9 +442,11 @@ def _enforce_rate_limit() -> Optional[Tuple[Any, int]]:
 
     Invoked in a controlled order by `pre_request_checks` function.
     """
-    if API_SERVER_RATE_LIMIT:  # Check if rate limiting is enabled
-        client_ip = request.remote_addr
-        if is_rate_limited(client_ip):
+
+    # Check if rate limiting is enabled
+    if API_SERVER_RATE_LIMIT:
+        client_ip = request.remote_addr # Get client IP address
+        if is_rate_limited(client_ip): # Check if the client IP has exceeded the rate limit
             return (
                 jsonify({"error": ERROR_MESSAGES["rate_limited"]}),
                 STATUS_CODES["too_many_requests"],
@@ -457,6 +470,7 @@ def pre_request_checks() -> Optional[Tuple[Any, int]]:
     order they were registered. By centralizing into `pre_request_checks`, the
     order becomes explicit and easier to reason about.
     """
+
     # Run validation first
     resp = _validate_user_data()
     if resp is not None:
@@ -475,6 +489,7 @@ def _sanitize_callback(callback: object, max_len: int = 200, fp_len: int = 12):
     truncated, control-character-free, token-redacted string safe for logs,
     and fingerprint is a short HMAC-SHA256/sha256 hex prefix for correlation.
     """
+
     # Ensure string form
     raw = "" if callback is None else str(callback)
 
@@ -515,7 +530,7 @@ def _sanitize_callback(callback: object, max_len: int = 200, fp_len: int = 12):
 @jwt.unauthorized_loader
 def custom_unauthorized_response(callback):
     # sanitize and fingerprint the callback before logging
-    cb_short, cb_fp = _sanitize_callback(callback)
+    cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
     log(
         log_type="error",
         message=f"api reached with missing token, callback: {cb_short} [fp:{cb_fp}]",
@@ -531,7 +546,7 @@ def custom_unauthorized_response(callback):
 @jwt.invalid_token_loader
 def custom_invalid_token_response(callback):
     # sanitize and fingerprint the callback before logging
-    cb_short, cb_fp = _sanitize_callback(callback)
+    cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
     log(
         log_type="error",
         message=f"api reached with invalid token, callback: {cb_short} [fp:{cb_fp}]",
@@ -545,8 +560,12 @@ def custom_invalid_token_response(callback):
 
 # Helper function to summarize JWT headers and payloads in logs
 def _summarize(d: dict, keys: tuple):
+
+    # if not a dict, return string representation
     if not isinstance(d, dict):
         return str(d)
+    
+    # extract specified keys with truncation
     out = {}
     for k in keys:
         if k in d:
@@ -554,6 +573,8 @@ def _summarize(d: dict, keys: tuple):
             if isinstance(v, str) and len(v) > 64:
                 v = v[:64] + "..."  # truncate long values
             out[k] = v
+
+    # fallback: show first 5 keys if none of the specified keys found
     return out or {"keys": list(d.keys())[:5]}
 
 
@@ -561,6 +582,7 @@ def _summarize(d: dict, keys: tuple):
 @jwt.expired_token_loader
 def custom_expired_token_response(jwt_header, jwt_payload):
 
+    # summarize header and payload for logging
     header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
@@ -574,6 +596,7 @@ def custom_expired_token_response(jwt_header, jwt_payload):
         ),
         structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
     )
+
     return (
         jsonify(INVALID_JWT_MESSAGES["expired_token"][0]),
         INVALID_JWT_MESSAGES["expired_token"][1],
@@ -583,6 +606,8 @@ def custom_expired_token_response(jwt_header, jwt_payload):
 # Handle revoked tokens (if applicable)
 @jwt.revoked_token_loader
 def custom_revoked_token_response(jwt_header, jwt_payload):
+
+    # summarize header and payload for logging
     header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
@@ -596,6 +621,7 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
         ),
         structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
     )
+
     return (
         jsonify(INVALID_JWT_MESSAGES["revoked_token"][0]),
         INVALID_JWT_MESSAGES["revoked_token"][1],
@@ -623,10 +649,12 @@ def health_check():
                   type: string
                   example: ok
     """
+
     return jsonify({"status": "ok"}), STATUS_CODES["ok"]
 
 
 if __name__ == "__main__":
+
     # Register the blueprints
     blueprints_dir: str = os_path_join(
         os_path_dirname(os_path_abspath(__file__)), "api_blueprints"
@@ -635,18 +663,21 @@ if __name__ == "__main__":
     # Ensure the api_blueprints directory exists and contains at least one Python file
     try:
         entries = os_listdir(blueprints_dir)
-    except Exception as e:
+    except Exception as ex:
+        # Log the error and exit if the directory is missing or inaccessible
         log(
             log_type="error",
-            message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {e}",
+            message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {ex}",
             structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
         )
-        print(f"ERROR: api_blueprints directory not found or inaccessible: {e}")
-        sys.exit(1)
+        # Also print to console for immediate feedback
+        print(f"ERROR: api_blueprints directory not found or inaccessible: {ex}")
+        sys.exit(1) # exit with error
 
     # Require at least one .py file to proceed (avoid starting with an empty blueprints dir)
     python_files = [f for f in entries if f.endswith(".py")]
     if not python_files:
+        # if no Python files found, log and exit
         log(
             log_type="error",
             message=f"No Python files found in '{blueprints_dir}'. At least one file is required.",
@@ -654,29 +685,30 @@ if __name__ == "__main__":
         )
         print(
             f"ERROR: No Python files found in {blueprints_dir}; add at least one blueprint file."
-        )
-        sys.exit(1)
+        ) # Print to console for immediate feedback
+        sys.exit(1) #exit with error
 
     for filename in os_listdir(blueprints_dir):
         # Only consider Python files following the *_bp.py naming convention
+        # (i.e. files meant to define blueprints)
         if not filename.endswith("_bp.py"):
             continue
 
-        module_name: str = filename[:-3]
-        full_module_name = f"api_blueprints.{module_name}"
+        module_name: str = filename[:-3] # strip .py extension
+        full_module_name = f"api_blueprints.{module_name}" # construct full import path
 
         # Try importing the module; log and continue on failure
         try:
             module = import_module(full_module_name)
-        except Exception as e:
+        except Exception as ex:
             log(
                 log_type="error",
                 message=(
-                    f"Failed to import blueprint module '{full_module_name}': {e}"
+                    f"Failed to import blueprint module '{full_module_name}': {ex}"
                 ),
                 structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
             )
-            print(f"Skipping {full_module_name}: import failed: {e}")
+            print(f"Skipping {full_module_name}: import failed: {ex}")
             continue
 
         # Discover all flask.Blueprint instances in api_blueprints.<module>
@@ -708,19 +740,20 @@ if __name__ == "__main__":
         # Register all discovered Blueprints
         for attr_name, blueprint in found_blueprints:
             try:
-                main_api.register_blueprint(blueprint, url_prefix=URL_PREFIX)
+                main_api.register_blueprint(blueprint, url_prefix=URL_PREFIX) # Register with proper URL prefix
+                # Log successful registration
                 print(
                     f"Registered blueprint: {full_module_name}.{attr_name} with prefix {URL_PREFIX}"
                 )
-            except Exception as e:
+            except Exception as ex: 
                 log(
                     log_type="error",
                     message=(
-                        f"Failed to register blueprint '{full_module_name}.{attr_name}': {e}"
+                        f"Failed to register blueprint '{full_module_name}.{attr_name}': {ex}"
                     ),
                     structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
-                )
-                print(f"Failed to register {full_module_name}.{attr_name}: {e}")
+                ) # Log the error
+                print(f"Failed to register {full_module_name}.{attr_name}: {ex}") # Print to console for immediate feedback
 
     # Initialize the database inside the app context
     with main_api.app_context():
@@ -734,9 +767,9 @@ if __name__ == "__main__":
                 structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
             )
             print(
-                "\nERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config."
-            )
-            sys.exit(1)
+                "ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config."
+            ) # Print to console for immediate feedback
+            sys.exit(1) # exit with error
 
     # Log the server start
     log(
