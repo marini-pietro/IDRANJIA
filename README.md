@@ -74,13 +74,17 @@ Recommended environment overrides (examples):
 
 ## Troubleshooting pointers
 
-- Common JWT issue: mismatched `JWT_SECRET_KEY` or `JWT_ALGORITHM` between `auth_server.py` and `api_server.py`.
-- Authentication failures: verify the stored password format and PBKDF2 parameters (iterations, hash length).
-- Logging/Rate-limit: check `config.py` rate limit values and the log server's delayed queue size if messages are dropped.
+- Common JWT issue: mismatched `JWT_SECRET_KEY` or `JWT_ALGORITHM` between `auth_server.py` and `api_server.py`.  
+- Authentication failures: verify the stored password format and PBKDF2 parameters (iterations, hash length).  
+- Logging/Rate-limit: check `config.py` rate limit values and the log server's delayed queue size if messages are dropped.  
+- Unable to load configuration: The suffix .example has not been removed from the .env file.  
+- Unable to execute quick start/kill scripts to run the code on Windows based machines: Execute this command in the powershell terminal `Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned`, this will allow script execution only for the current terminal sessions and not affect any other sessions or system-wide settings.
+- Unable to execuite quick start/kill scripts to run the code on Linux based machines: Ensure the scripts have the proper permission (i.e you have properly used the `chmod` command).
+- Terminal looks cramped and arduos to read while testing/developing: Because of the testing/developing environment most element of the architecture will run on the same machine, naturally, as a result, all the output messages will mix together and become hard to read. Because of Powershell text formatting, the issue overall being minor and the code required to fix it not worth implementing no solution is provided for this problem.
 
 ## Security hardening checklist (recommended before production)
 
-1. Replace hard-coded secrets with environment-provided secrets or a secrets manager.
+1. Remove any hard-coded secret or sensitive settings and put them inside of a properly managed and kept `.env` file.
 2. Ensure `JWT_SECRET_KEY` >= 32 bytes, rotate periodically, and keep secrets out of source control.
 3. Use real TLS certificates in `*_SSL_CERT` / `*_SSL_KEY` (`*_SSL` flags will automatically configure wether certificate and key are provided or not).
 4. Use a managed database or secure DB instance with restricted network access and strong credentials.

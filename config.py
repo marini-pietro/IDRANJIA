@@ -1,3 +1,4 @@
+
 """
 This module contains the configuration settings for the API server, including:
 - Authentication server settings
@@ -6,31 +7,41 @@ This module contains the configuration settings for the API server, including:
 - Database settings
 - HTTP status codes and their explanations
 - Authorization settings
+
+Configuration values are loaded from environment variables if set, otherwise default to hardcoded values below.
+Some settings, because of their type complexity or reliance on other settings, are not easily set via environment variables and thus remain hardcoded.
+Such settings should be modified directly in this file if needed, though in the vast majority of cases, this is unnecessary and not recommended.
+To avoid boilerplate code, ensure consistency across the project, simplify maintenance/edits, all the other files in the project should import configuration values directly from this module.
+Supports .env files via python-dotenv for easy overrides.
 """
+
 
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from typing import Dict, Set, Tuple
+from dotenv import load_dotenv
 from datetime import timedelta
+from os import environ as os_environ
+
+if load_dotenv():  # Loads .env file if present
+    print("Loaded environment variables from .env file.")
+else: 
+    print("No .env file found.")
 
 # Authentication server related settings
-AUTH_SERVER_HOST: str = "localhost"  # The host of the authentication server
-AUTH_SERVER_PORT: int = 5002  # The port of the authentication server
-AUTH_SERVER_NAME_IN_LOG: str = "auth-server"
-AUTH_SERVER_DEBUG_MODE: bool = True
-AUTH_SERVER_RATE_LIMIT: bool = (
-    True  # Whether to enable rate limiting on the authentication server
-)
-AUTH_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
-AUTH_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
+AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost")
+AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5002))
+AUTH_SERVER_NAME_IN_LOG: str = os_environ.get("AUTH_SERVER_NAME_IN_LOG", "auth-server")
+AUTH_SERVER_DEBUG_MODE: bool = bool(os_environ.get("AUTH_SERVER_DEBUG_MODE", "True"))
+AUTH_SERVER_RATE_LIMIT: bool = bool(os_environ.get("AUTH_SERVER_RATE_LIMIT", "True"))
+AUTH_SERVER_SSL_CERT: str = os_environ.get("AUTH_SERVER_SSL_CERT", "")
+AUTH_SERVER_SSL_KEY: str = os_environ.get("AUTH_SERVER_SSL_KEY", "")
 AUTH_SERVER_SSL: bool = not (
     AUTH_SERVER_SSL_CERT == "" and AUTH_SERVER_SSL_KEY == ""
 )  # Whether the authentication server uses SSL/TLS or not
-JWT_VALIDATION_CACHE_SIZE: int = 1000  # The size of the cache for token validation
-JWT_VALIDATION_CACHE_TTL: int = (
-    3600  # The time-to-live for the token validation cache (seconds)
-)
+JWT_VALIDATION_CACHE_SIZE: int = int(os_environ.get("JWT_VALIDATION_CACHE_SIZE", 1000))
+JWT_VALIDATION_CACHE_TTL: int = int(os_environ.get("JWT_VALIDATION_CACHE_TTL", 3600))
 # PBKDF2 HMAC settings for password hashing
 PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "algorithm": hashes.SHA256(),
@@ -40,16 +51,16 @@ PBKDF2HMAC_SETTINGS: Dict[str, int] = {
 }
 
 # Log server related settings
-LOG_SERVER_HOST: str = "localhost"  # The host of the log server
-LOG_SERVER_PORT: int = 5014  # The port of the log server
-LOG_FILE_NAME: str = "idranjia_log.txt"
-LOGGER_NAME: str = "idranjia_logger"  # The name of the logger
-LOG_SERVER_NAME_IN_LOG: str = "log-server"  # The name of the server in the log messages
-LOG_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the log server
-DELAYED_LOGS_QUEUE_SIZE: int = 100  # The size of the delayed logs queue
+LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost")
+LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5014))
+LOG_FILE_NAME: str = os_environ.get("LOG_FILE_NAME", "idranjia_log.txt")
+LOGGER_NAME: str = os_environ.get("LOGGER_NAME", "idranjia_logger")
+LOG_SERVER_NAME_IN_LOG: str = os_environ.get("LOG_SERVER_NAME_IN_LOG", "log-server")
+LOG_SERVER_RATE_LIMIT: bool = bool(os_environ.get("LOG_SERVER_RATE_LIMIT", "True"))
+DELAYED_LOGS_QUEUE_SIZE: int = int(os_environ.get("DELAYED_LOGS_QUEUE_SIZE", 100))
 # (if the queue is full, the oldest logs will
 #  be removed to make space for new ones)
-SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog server
+SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog server (should not change as it follows syslog standard)
     "emergency": 0,  # System is unusable
     "alert": 1,  # Action must be taken immediately
     "critical": 2,  # Critical conditions
@@ -62,62 +73,53 @@ SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog 
 
 # API server related settings
 # | API server settings
-API_SERVER_HOST: str = "localhost"
-API_SERVER_PORT: int = 5000
-API_SERVER_NAME_IN_LOG: str = "api-server"  # The name of the server in the log messages
-API_VERSION: str = "v1"  # The version of the API
-URL_PREFIX: str = f"/api/{API_VERSION}"  # The prefix for all API endpoints
-API_SERVER_DEBUG_MODE: bool = True  # Whether the API server is in debug mode or not
-API_SERVER_RATE_LIMIT: bool = True  # Whether to enable rate limiting on the API server
-API_SERVER_MAX_JSON_SIZE = 50 * 10244  # Maximum JSON payload size in bytes (50 KiB)
-SQL_SCAN_MAX_LEN = (
-    2048  # Maximum length of strings to scan for SQL injection (to prevent ReDoS)
-)
-SQL_SCAN_MAX_RECURSION_DEPTH = 10  # Maximum recursion depth for SQL injection scanning
+API_SERVER_HOST: str = os_environ.get("API_SERVER_HOST", "localhost")
+API_SERVER_PORT: int = int(os_environ.get("API_SERVER_PORT", 5000))
+API_SERVER_NAME_IN_LOG: str = os_environ.get("API_SERVER_NAME_IN_LOG", "api-server")
+API_VERSION: str = os_environ.get("API_VERSION", "v1")
+URL_PREFIX: str = f"/api/{API_VERSION}"
+API_SERVER_DEBUG_MODE: bool = bool(os_environ.get("API_SERVER_DEBUG_MODE", "True"))
+API_SERVER_RATE_LIMIT: bool = bool(os_environ.get("API_SERVER_RATE_LIMIT", "True"))
+API_SERVER_MAX_JSON_SIZE = int(os_environ.get("API_SERVER_MAX_JSON_SIZE", 50 * 10244))
+SQL_SCAN_MAX_LEN = int(os_environ.get("SQL_SCAN_MAX_LEN", 2048))
+SQL_SCAN_MAX_RECURSION_DEPTH = int(os_environ.get("SQL_SCAN_MAX_RECURSION_DEPTH", 10))
 LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
     "localhost",
     "127.0.0.1",
-}  # Determines if login is allowed through the API server
-# (True if the authentication server is running on the same machine as the API server)
-API_SERVER_SSL_CERT: str = ""  # The path to the SSL/TLS certificate file
-API_SERVER_SSL_KEY: str = ""  # The path to the SSL/TLS key file
+}
+API_SERVER_SSL_CERT: str = os_environ.get("API_SERVER_SSL_CERT", "")
+API_SERVER_SSL_KEY: str = os_environ.get("API_SERVER_SSL_KEY", "")
 API_SERVER_SSL: bool = not (
     API_SERVER_SSL_CERT == "" and API_SERVER_SSL_KEY == ""
-)  # Whether the API server uses SSL/TLS or not
+)
 
 # JWT custom configuration
-JWT_SECRET_KEY: str = "Lorem ipsum dolor sit amet eget."
-JWT_ALGORITHM: str = "HS256"  # The algorithm used to sign the JWT token
-JWT_QUERY_STRING_NAME = "jwt_token"  # Custom name for the query string parameter
-JWT_JSON_KEY = "jwt_token"  # Custom key for the access token in JSON payloads
-JWT_REFRESH_JSON_KEY = (
-    "jwt_refresh_token"  # Custom key for the refresh token in JSON payloads
-)
-JWT_TOKEN_LOCATION = [
-    "headers",
-    "query_string",
-    "json",
-]  # Where to look for the JWT token
-JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=10)  # Refresh token valid duration
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=3)  # Access token valid duration
+JWT_SECRET_KEY: str = os_environ.get("JWT_SECRET_KEY", "Lorem ipsum dolor sit amet eget.")
+JWT_ALGORITHM: str = os_environ.get("JWT_ALGORITHM", "HS256")
+JWT_QUERY_STRING_NAME = os_environ.get("JWT_QUERY_STRING_NAME", "jwt_token")
+JWT_JSON_KEY = os_environ.get("JWT_JSON_KEY", "jwt_token")
+JWT_REFRESH_JSON_KEY = os_environ.get("JWT_REFRESH_JSON_KEY", "jwt_refresh_token")
+JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,json").split(",")
+JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10)))
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3)))
 # | Database configuration
-DB_HOST = "localhost"
-DB_NAME = "idranjia"
-DB_USER = "postgres"
-DB_PASSWORD = "postgres"  # Default password for PostgreSQL, change in production
-DB_PORT = "5432"
+DB_HOST = os_environ.get("DB_HOST", "localhost")
+DB_NAME = os_environ.get("DB_NAME", "idranjia")
+DB_USER = os_environ.get("DB_USER", "postgres")
+DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres")
+DB_PORT = os_environ.get("DB_PORT", "5432")
 
 SQLALCHEMY_DATABASE_URI = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
-SQLALCHEMY_TRACK_MODIFICATIONS = False
+SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True"
 
 
 # Miscellaneous settings
 # | Rate limiting settings
-RATE_LIMIT_MAX_REQUESTS: int = 50  # Maximum messages per source
-RATE_LIMIT_CACHE_SIZE: int = 1000  # The size of the cache for rate limiting
-RATE_LIMIT_CACHE_TTL: int = 10  # Time window in seconds
+RATE_LIMIT_MAX_REQUESTS: int = int(os_environ.get("RATE_LIMIT_MAX_REQUESTS", 50))
+RATE_LIMIT_CACHE_SIZE: int = int(os_environ.get("RATE_LIMIT_CACHE_SIZE", 1000))
+RATE_LIMIT_CACHE_TTL: int = int(os_environ.get("RATE_LIMIT_CACHE_TTL", 10))
 # | HTTP status codes
 STATUS_CODES: Dict[str, int] = {
     "not_found": 404,
@@ -135,6 +137,7 @@ STATUS_CODES: Dict[str, int] = {
     "internal_error": 500,
     "service_unavailable": 503,
 }
+
 # | Roles and their corresponding IDs
 ROLES: Set[str] = {"admin", "operator", "viewer"}
 
