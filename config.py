@@ -8,8 +8,8 @@ This module contains the configuration settings for the API server, including:
 - HTTP status codes and their explanations
 - Authorization settings
 
-Configuration values are loaded from environment variables if set, otherwise default to hardcoded values below.
-Some settings, because of their type complexity or reliance on other settings, are not easily set via environment variables and thus remain hardcoded.
+Configuration values are loaded from environment variables if set, otherwise default to hardcoded values (only suitable for development environments).
+Some settings, because of their type complexity or reliance on other settings, cannot be set via environment variables and thus remain hardcoded in this file (none are sensitive).
 Such settings should be modified directly in this file if needed, though in the vast majority of cases, this is unnecessary and not recommended.
 To avoid boilerplate code, ensure consistency across the project, simplify maintenance/edits, all the other files in the project should import configuration values directly from this module.
 Supports .env files via python-dotenv for easy overrides.
@@ -31,10 +31,10 @@ else:
 
 # Authentication server related settings
 AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost")
-AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5002))
+AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5001))
 AUTH_SERVER_NAME_IN_LOG: str = os_environ.get("AUTH_SERVER_NAME_IN_LOG", "auth-server")
-AUTH_SERVER_DEBUG_MODE: bool = bool(os_environ.get("AUTH_SERVER_DEBUG_MODE", "True"))
-AUTH_SERVER_RATE_LIMIT: bool = bool(os_environ.get("AUTH_SERVER_RATE_LIMIT", "True"))
+AUTH_SERVER_DEBUG_MODE: bool = os_environ.get("AUTH_SERVER_DEBUG_MODE", "True") == "True"
+AUTH_SERVER_RATE_LIMIT: bool = os_environ.get("AUTH_SERVER_RATE_LIMIT", "True") == "True"
 AUTH_SERVER_SSL_CERT: str = os_environ.get("AUTH_SERVER_SSL_CERT", "")
 AUTH_SERVER_SSL_KEY: str = os_environ.get("AUTH_SERVER_SSL_KEY", "")
 AUTH_SERVER_SSL: bool = not (
@@ -52,11 +52,11 @@ PBKDF2HMAC_SETTINGS: Dict[str, int] = {
 
 # Log server related settings
 LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost")
-LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5014))
+LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5002))
 LOG_FILE_NAME: str = os_environ.get("LOG_FILE_NAME", "idranjia_log.txt")
 LOGGER_NAME: str = os_environ.get("LOGGER_NAME", "idranjia_logger")
 LOG_SERVER_NAME_IN_LOG: str = os_environ.get("LOG_SERVER_NAME_IN_LOG", "log-server")
-LOG_SERVER_RATE_LIMIT: bool = bool(os_environ.get("LOG_SERVER_RATE_LIMIT", "True"))
+LOG_SERVER_RATE_LIMIT: bool = os_environ.get("LOG_SERVER_RATE_LIMIT", "True") == "True"
 DELAYED_LOGS_QUEUE_SIZE: int = int(os_environ.get("DELAYED_LOGS_QUEUE_SIZE", 100))
 # (if the queue is full, the oldest logs will
 #  be removed to make space for new ones)
@@ -78,8 +78,8 @@ API_SERVER_PORT: int = int(os_environ.get("API_SERVER_PORT", 5000))
 API_SERVER_NAME_IN_LOG: str = os_environ.get("API_SERVER_NAME_IN_LOG", "api-server")
 API_VERSION: str = os_environ.get("API_VERSION", "v1")
 URL_PREFIX: str = f"/api/{API_VERSION}"
-API_SERVER_DEBUG_MODE: bool = bool(os_environ.get("API_SERVER_DEBUG_MODE", "True"))
-API_SERVER_RATE_LIMIT: bool = bool(os_environ.get("API_SERVER_RATE_LIMIT", "True"))
+API_SERVER_DEBUG_MODE: bool = os_environ.get("API_SERVER_DEBUG_MODE", "True") == "True"
+API_SERVER_RATE_LIMIT: bool = os_environ.get("API_SERVER_RATE_LIMIT", "True") == "True"
 API_SERVER_MAX_JSON_SIZE = int(os_environ.get("API_SERVER_MAX_JSON_SIZE", 50 * 10244))
 SQL_SCAN_MAX_LEN = int(os_environ.get("SQL_SCAN_MAX_LEN", 2048))
 SQL_SCAN_MAX_RECURSION_DEPTH = int(os_environ.get("SQL_SCAN_MAX_RECURSION_DEPTH", 10))
