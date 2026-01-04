@@ -16,27 +16,33 @@ from datetime import datetime
 from collections import defaultdict, deque
 from typing import List, Tuple, Deque, Optional, Pattern, Match
 from threading import Thread, Lock
+from cachetools import TTLCache
 from os.path import abspath as os_path_abspath
 from os.path import dirname as os_path_dirname
 from os.path import join as os_path_join
 
 # Local imports
-from config import (
+from log_config import (
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
     LOG_FILE_NAME,
     LOGGER_NAME,
-    RATE_LIMIT_MAX_REQUESTS,
+    LOG_SERVER_NAME_IN_LOG,
+    LOG_SERVER_RATE_LIMIT,
+    DELAYED_LOGS_QUEUE_SIZE,
+    RETAIN_LOGS_RATE_LIMIT_TRIGGER,
     RETAIN_LOGS_RATE_LIMIT_TRIGGER,
     LOG_RATE_LIMIT_TRIGGER_EVENTS,
-    DELAYED_LOGS_QUEUE_SIZE,
-    LOG_SERVER_RATE_LIMIT,
-)
-from api_blueprints.blueprints_utils import (
-    rate_limit_cache,
-    rate_limit_lock,
+    LOG_SERVER_RATE_LIMIT_MAX_REQUESTS,
+    LOG_SERVER_RATE_LIMIT_CACHE_SIZE,
+    LOG_SERVER_RATE_LIMIT_CACHE_TTL,
 )
 
+# Replace file-based rate-limiting with TTLCache
+rate_limit_cache = TTLCache(
+    maxsize=LOG_SERVER_RATE_LIMIT_CACHE_SIZE, ttl=LOG_SERVER_RATE_LIMIT_CACHE_TTL
+)  # Cache with a TTL equal to the time window
+rate_limit_lock = Lock()  # Lock for thread-safe file access
 
 # Define the logger class
 class Logger:
@@ -324,7 +330,7 @@ def enforce_rate_limit(client_ip: str) -> bool:
         rate_limit_cache[client_ip] = client_data
 
         # Check if the rate limit is exceeded
-        return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
+        return client_data["count"] > LOG_SERVER_RATE_LIMIT_MAX_REQUESTS
 
 
 def process_syslog_message(message: str, addr: tuple) -> None:
@@ -496,7 +502,7 @@ if __name__ == "__main__":
     logger.log(
         log_type="info",
         message="Starting syslog server...",
-        origin="log_server.py",
+        origin=LOG_SERVER_NAME_IN_LOG,
     )
 
     try:
@@ -507,11 +513,11 @@ if __name__ == "__main__":
         logger.log(
             log_type="info",
             message="Syslog server stopped by user via KeyboardInterrupt.",
-            origin="log_server.py",
+            origin=LOG_SERVER_NAME_IN_LOG,
         )
     except Exception as ex:
         logger.log(
             log_type="warning",
             message=f"Syslog server encountered stopped with exception: {ex}",
-            origin="log_server.py",
+            origin=LOG_SERVER_NAME_IN_LOG,
         )
