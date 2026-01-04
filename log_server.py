@@ -27,6 +27,8 @@ from config import (
     LOG_FILE_NAME,
     LOGGER_NAME,
     RATE_LIMIT_MAX_REQUESTS,
+    RETAIN_LOGS_RATE_LIMIT_TRIGGER,
+    LOG_RATE_LIMIT_TRIGGER_EVENTS,
     DELAYED_LOGS_QUEUE_SIZE,
     LOG_SERVER_RATE_LIMIT,
 )
@@ -307,7 +309,8 @@ queue_lock = Lock()  # Lock to ensure thread-safe access to the queue
 
 def enforce_rate_limit(client_ip: str) -> bool:
     """
-    Check if the client IP is rate-limited using an in-memory TTLCache.
+    Check if the client IP is rate-limited using an in-memory TTLCache.  
+    (This function will return true (the rate has been exceeded) on the exact request that matches the limit, i.e. the 100th request is the limit is 100 requests per time window)
     """
 
     with rate_limit_lock:
@@ -345,15 +348,20 @@ def process_syslog_message(message: str, addr: tuple) -> None:
     # Enforce rate limit
     if LOG_SERVER_RATE_LIMIT is True:
         if enforce_rate_limit(source_ip):
-            # Add the log to the delayed queue instead of dropping it
-            with queue_lock:
-                delayed_logs.append((message, addr))
-            logger.log(
-                log_type="warning",
-                message=f"{source_ip} exceeded rate limit. Delaying message: {message}",
-                origin=f"source_ip={source_ip}",
-            )
-            return  # Do not process the message immediately
+            # Add the log to the delayed queue instead of dropping it (if enabled)
+            if RETAIN_LOGS_RATE_LIMIT_TRIGGER is True:
+                with queue_lock:
+                    delayed_logs.append((message, addr))
+                    
+            # Log the rate limit event if enabled
+            if LOG_RATE_LIMIT_TRIGGER_EVENTS is True:
+                logger.log(
+                    log_type="warning",
+                    message=f"{source_ip} exceeded rate limit. Delaying message: {message}",
+                    origin=f"source_ip={source_ip}",
+                )
+
+            return
 
     # Process the syslog message as usual
     _process_message(message, addr)
@@ -484,7 +492,26 @@ Thread(target=process_delayed_logs, daemon=True).start()
 
 if __name__ == "__main__":
 
-    # TODO add logging events for server start and stop
+    # Log server startup event
+    logger.log(
+        log_type="info",
+        message="Starting syslog server...",
+        origin="log_server.py",
+    )
 
-    # Start the syslog server
-    start_syslog_server(LOG_SERVER_HOST, LOG_SERVER_PORT)
+    try:
+        # Start the syslog server
+        start_syslog_server(LOG_SERVER_HOST, LOG_SERVER_PORT)
+
+    except KeyboardInterrupt:
+        logger.log(
+            log_type="info",
+            message="Syslog server stopped by user via KeyboardInterrupt.",
+            origin="log_server.py",
+        )
+    except Exception as ex:
+        logger.log(
+            log_type="warning",
+            message=f"Syslog server encountered stopped with exception: {ex}",
+            origin="log_server.py",
+        )

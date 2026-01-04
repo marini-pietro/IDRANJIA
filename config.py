@@ -51,15 +51,17 @@ PBKDF2HMAC_SETTINGS: Dict[str, int] = {
 }
 
 # Log server related settings
-LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost")
-LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5002))
-LOG_FILE_NAME: str = os_environ.get("LOG_FILE_NAME", "idranjia_log.txt")
-LOGGER_NAME: str = os_environ.get("LOGGER_NAME", "idranjia_logger")
-LOG_SERVER_NAME_IN_LOG: str = os_environ.get("LOG_SERVER_NAME_IN_LOG", "log-server")
-LOG_SERVER_RATE_LIMIT: bool = os_environ.get("LOG_SERVER_RATE_LIMIT", "True") == "True"
-DELAYED_LOGS_QUEUE_SIZE: int = int(os_environ.get("DELAYED_LOGS_QUEUE_SIZE", 100))
+LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host on which the log server listens for incoming syslog messages
+LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5002)) # port on which the log server listens for incoming syslog messages
+LOG_FILE_NAME: str = os_environ.get("LOG_FILE_NAME", "idranjia_log.txt") # name of the log file where logs are stored
+LOGGER_NAME: str = os_environ.get("LOGGER_NAME", "idranjia_logger") # name of the logger used in the log server
+LOG_SERVER_NAME_IN_LOG: str = os_environ.get("LOG_SERVER_NAME_IN_LOG", "log-server") # with which name the log server shows up in logs
+LOG_SERVER_RATE_LIMIT: bool = os_environ.get("LOG_SERVER_RATE_LIMIT", "True") == "True" # enable/disable rate limiting on the log server
+DELAYED_LOGS_QUEUE_SIZE: int = int(os_environ.get("DELAYED_LOGS_QUEUE_SIZE", 100)) # Size of the queue for delayed logs
 # (if the queue is full, the oldest logs will
 #  be removed to make space for new ones)
+RETAIN_LOGS_RATE_LIMIT_TRIGGER: bool = os_environ.get("RETAIN_LOGS_RATE_LIMIT_TRIGGER", "True") == "True" #  Whether to retain logs (but not process them immediately) when rate limit is triggered
+LOG_RATE_LIMIT_TRIGGER_EVENTS: bool = os_environ.get("LOG_RATE_LIMIT_TRIGGER_EVENTS", "False") == "True" # Whether or not to log rate limit trigger events (log that an ip has been rate limited)
 SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog server (should not change as it follows syslog standard)
     "emergency": 0,  # System is unusable
     "alert": 1,  # Action must be taken immediately
@@ -117,9 +119,9 @@ SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS"
 
 # Miscellaneous settings
 # | Rate limiting settings
-RATE_LIMIT_MAX_REQUESTS: int = int(os_environ.get("RATE_LIMIT_MAX_REQUESTS", 50))
-RATE_LIMIT_CACHE_SIZE: int = int(os_environ.get("RATE_LIMIT_CACHE_SIZE", 1000))
-RATE_LIMIT_CACHE_TTL: int = int(os_environ.get("RATE_LIMIT_CACHE_TTL", 10))
+RATE_LIMIT_MAX_REQUESTS: int = int(os_environ.get("RATE_LIMIT_MAX_REQUESTS", 50)) # max requests per time window
+RATE_LIMIT_CACHE_SIZE: int = int(os_environ.get("RATE_LIMIT_CACHE_SIZE", 1000)) # number of unique clients to track
+RATE_LIMIT_CACHE_TTL: int = int(os_environ.get("RATE_LIMIT_CACHE_TTL", 10)) # time window (in seconds) for rate limiting
 # | HTTP status codes
 STATUS_CODES: Dict[str, int] = {
     "not_found": 404,

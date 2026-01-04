@@ -44,11 +44,12 @@ This project implements several security measures. Highlights below reference th
 - Input validation and SQL-injection scanning
 	- A precompiled regex named `SQL_PATTERN` in `config.py` is used to detect common SQL keywords and suspicious characters. Functions like `is_input_safe()` (in `auth_server.py`) and blueprint-level checks validate incoming JSON keys and values.
 	- Note: This scanning is a helpful heuristic but not a replacement for parameterized queries. All DB access should use SQLAlchemy ORM or parameterized queries (SQLAlchemy handles that by default).
+	- To avoid ReDos a maximum length for a scannable string and maximum recursion depth (for scanning complex data types that may contain other contain complex data types and so on) are defined (configurable via `.env` file).
 
 - Rate limiting
 	- Rate limit is enforced using TTL (Time to live) cache shared across all services and blueprints, if services are separated in different machine cache implementation may have to change.
     - Related settings are configurable in `config.py`.
-	- The log server additionally can queue delayed messages rather than dropping them immediately when the rate-limit triggers.
+	- The log server additionally can queue delayed messages rather than dropping them immediately when the rate-limit triggers (especially with low limits the rate limiting may trigger even if there is no DDoS related behaviour, just heavy traffic. In such case it would be desirable that even if the rate limit triggers the messages are still kept in consideration and not discarded but, on the other hand, allowing these kinds of logs to be eventually written into the log file may clutter up the log file in the end and/or reduce its reliability if an actual DDoS attack happens. There is no perfectly suitable way to satisfy both possibilities so user will just have to make an educated guess by tweaking limits and/or disabling this retention of messages received after rate limiting has been triggered by editing the `.env` file).
 
 - Logging and monitoring
 	- Centralized logging via `log_server.py` and helper logging functions in `api_blueprints/blueprints_utils.py`.
