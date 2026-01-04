@@ -24,37 +24,53 @@ from flask_jwt_extended import (
 # Local imports
 from api_blueprints.blueprints_utils import log, is_rate_limited
 from models import db, User
-from config import (
+from auth_config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
+    AUTH_API_VERSION,
     AUTH_SERVER_NAME_IN_LOG,
     AUTH_SERVER_DEBUG_MODE,
-    JWT_ACCESS_TOKEN_EXPIRES,
+    AUTH_SERVER_RATE_LIMIT,
+    AUTH_SERVER_SSL_CERT,
+    AUTH_SERVER_SSL_KEY,
+    AUTH_SERVER_SSL,
+    PBKDF2HMAC_SETTINGS,
     JWT_SECRET_KEY,
+    JWT_ALGORITHM,
+    JWT_QUERY_STRING_NAME,
+    JWT_JSON_KEY,
+    JWT_REFRESH_JSON_KEY,
+    JWT_TOKEN_LOCATION,
+    JWT_ACCESS_TOKEN_EXPIRES,
     STATUS_CODES,
     JWT_REFRESH_TOKEN_EXPIRES,
     JWT_ALGORITHM,
-    AUTH_SERVER_RATE_LIMIT,
-    AUTH_SERVER_SSL,
-    AUTH_SERVER_SSL_CERT,
-    AUTH_SERVER_SSL_KEY,
-    PBKDF2HMAC_SETTINGS,
     SQL_PATTERN,
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
 )
 
-# Initialize Flask app and SQLAlchemy
+# Initialize Flask app
 auth_api = Flask(__name__)
+
+# Update configuration settings for the Flask app
 auth_api.config.update(
-    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI,
-    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS,
-    JWT_SECRET_KEY=JWT_SECRET_KEY,
-    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,
-    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES,
-    JWT_ALGORITHM=JWT_ALGORITHM,
+    JWT_SECRET_KEY=JWT_SECRET_KEY, # Same secret key as the auth microservice
+    JWT_ALGORITHM=JWT_ALGORITHM,   # Same algorithm as the auth microservice
+    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION, # Where to look for tokens
+    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME, # Custom query string name
+    JWT_JSON_KEY=JWT_JSON_KEY,     # Custom JSON key for access tokens
+    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY, # Custom JSON key for refresh tokens
+    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES, # Refresh token valid duration
+    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,     # Access token valid duration
+    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI, # Database connection URI
+    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS, # Disable track modifications
 )
+
+# Initialize database (ORM abstraction layer)
 db.init_app(auth_api)
+
+# Initialize JWT manager
 jwt = JWTManager(auth_api)
 
 # Initialize Swagger
@@ -167,7 +183,7 @@ def enforce_rate_limit():
         )
 
 
-@auth_api.route("/auth/login", methods=["POST"])
+@auth_api.route(f"/auth/{AUTH_API_VERSION}/login", methods=["POST"])
 def login():
     """
     Login endpoint to authenticate users and generate JWT tokens.
@@ -289,7 +305,7 @@ def login():
        return jsonify({"error": "invalid credentials"}), STATUS_CODES["unauthorized"]
 
 
-@auth_api.route("/auth/validate", methods=["POST"])
+@auth_api.route(f"/auth/{AUTH_API_VERSION}/validate", methods=["POST"])
 @jwt_required()
 def validate_token():
     """
@@ -324,7 +340,7 @@ def validate_token():
     return jsonify({"identity": identity, "role": user_role}), STATUS_CODES["ok"]
 
 
-@auth_api.route("/auth/refresh", methods=["POST"])
+@auth_api.route(f"/auth/{AUTH_API_VERSION}/refresh", methods=["POST"])
 @jwt_required(refresh=True)
 def refresh():
     """
