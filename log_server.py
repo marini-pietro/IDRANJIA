@@ -483,5 +483,8 @@ def process_delayed_logs() -> None:
 Thread(target=process_delayed_logs, daemon=True).start()
 
 if __name__ == "__main__":
+
+    # TODO add logging events for server start and stop
+
     # Start the syslog server
     start_syslog_server(LOG_SERVER_HOST, LOG_SERVER_PORT)

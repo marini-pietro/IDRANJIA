@@ -8,6 +8,7 @@ import base64
 from binascii import Error as BinasciiError
 from typing import Dict, Union, List, Any
 from flask import Flask, request, jsonify
+from os import system as os_system_cmd
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.exceptions import InvalidKey
 from flasgger import Swagger
@@ -382,7 +383,7 @@ def health_check():
     tags:
       - Health
     summary: Health check endpoint
-    description: Returns a simple status message to indicate the server is healthy.
+    description: Returns a simple status message to indicate the server is healthy.  
     operationId: auth_health_check
     responses:
       200:
@@ -401,21 +402,87 @@ def health_check():
 
 
 if __name__ == "__main__":
-    # Log server start event
-    log(
-        log_type="info",
-        message="Authentication server started",
-        origin_name=AUTH_SERVER_NAME_IN_LOG,
-        origin_host=AUTH_SERVER_HOST,
-        message_id="ServerAction",
-        structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
-    )
     # Run the Flask authentication server
-    auth_api.run(
-        host=AUTH_SERVER_HOST,
-        port=AUTH_SERVER_PORT,
-        debug=AUTH_SERVER_DEBUG_MODE,
-        ssl_context=(
-            (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
-        ),
-    )
+    
+	# Use Flask's built-in server in debug mode for development (i.e. AUTH_SERVER_DEBUG_MODE=True)
+    if AUTH_SERVER_DEBUG_MODE is True:
+        try:
+            # Log server start event
+            log(
+                log_type="info",
+                message=f"Auth server starting with Flask built-in server with debug mode set to {AUTH_SERVER_DEBUG_MODE}",
+                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_host=AUTH_SERVER_HOST,
+                message_id="ServerAction",
+                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+            )
+            
+			# Start the server with Flask's built-in server
+            auth_api.run(
+                host=AUTH_SERVER_HOST,
+                port=AUTH_SERVER_PORT,
+                debug=AUTH_SERVER_DEBUG_MODE,
+                ssl_context=(
+                    (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
+                ),
+            )
+            
+            # Log server stop event only if run() returns (which is rare, usually only on shutdown)
+            log(
+                log_type="info",
+                message=f"Auth server stopped (Flask run() exited)",
+                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_host=AUTH_SERVER_HOST,
+                message_id="ServerAction",
+                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+            )
+        except Exception as ex:
+            log(
+                log_type="error",
+                message=f"Exception while starting auth server with Flask: {ex}",
+                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_host=AUTH_SERVER_HOST,
+                message_id="ServerAction",
+                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+            )
+
+	# Use waitress-serve in production (i.e. AUTH_SERVER_DEBUG_MODE=False)
+    else:
+      try:
+          # Log server start event
+          log(
+                log_type="info",
+                message="Auth server starting with waitress-serve",
+                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_host=AUTH_SERVER_HOST,
+                message_id="ServerAction",
+                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+          )
+
+		  # Start the server with waitress-serve            
+          exit_code = os_system_cmd(
+              f"waitress-serve "
+              f"--host={AUTH_SERVER_HOST} "
+              f"--port={AUTH_SERVER_PORT} "
+              f"{'--url-scheme=https' if AUTH_SERVER_SSL else ''} "
+              f"auth_server:auth_api"
+          )
+          
+		  # Log shutdown event
+          log(
+              log_type="info",
+              message=f"Auth server started with waitress shutdown with code {exit_code}",
+              origin_name=AUTH_SERVER_NAME_IN_LOG,
+              origin_host=AUTH_SERVER_HOST,
+              message_id="ServerAction",
+              structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+         )
+      except Exception as exc:
+          log(
+              log_type="error",
+              message=f"Exception while starting auth server with waitress-serve: {exc}",
+              origin_name=AUTH_SERVER_NAME_IN_LOG,
+              origin_host=AUTH_SERVER_HOST,
+              message_id="ServerAction",
+              structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+          )

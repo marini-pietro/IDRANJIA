@@ -10,6 +10,7 @@ from os import listdir as os_listdir
 from os.path import join as os_path_join
 from os.path import dirname as os_path_dirname
 from os.path import abspath as os_path_abspath
+from os import system as os_system_cmd
 from importlib import import_module
 from flask import Flask, jsonify, request, Blueprint
 from flask_jwt_extended import JWTManager
@@ -29,6 +30,7 @@ from config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
     API_SERVER_DEBUG_MODE,
+    AUTH_SERVER_PORT,
     STATUS_CODES,
     API_VERSION,
     URL_PREFIX,
@@ -326,7 +328,8 @@ def _check_size_within_limit(
 ) -> bool:
     """
     Recursively ensure that no string in the provided data exceeds the configured
-    per-field limit. Returns True when within limits, False otherwise.
+    per-field limit.  
+    Returns True when within limits, False otherwise.
     """
 
     # check string length
@@ -779,11 +782,65 @@ if __name__ == "__main__":
     )
 
     # Start the server
-    main_api.run(
-        host=API_SERVER_HOST,
-        port=API_SERVER_PORT,
-        debug=API_SERVER_DEBUG_MODE,
-        ssl_context=(
-            (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if API_SERVER_SSL else None
-        ),
-    )
+    if API_SERVER_DEBUG_MODE is True:
+      
+        # Log server start event
+        log(
+            log_type="info",
+            message=f"API server started with Flask built-in server with debug mode set to {API_SERVER_DEBUG_MODE}",
+            message_id="ServerAction",
+            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+        )      
+
+        # Start the server with Flask's built-in server
+        main_api.run(
+            host=API_SERVER_HOST,
+            port=API_SERVER_PORT,
+            debug=API_SERVER_DEBUG_MODE,
+            ssl_context=(
+                (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if API_SERVER_SSL else None
+            ),
+        )
+
+        # Log server stop event only if run() returns (which is rare, usually only on shutdown)
+        log(
+            log_type="info",
+            message=f"API server stopped (Flask run() exited)",
+            message_id="ServerAction",
+            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+        )        
+
+    else:
+        try:
+            # Log server start event
+            log(
+                log_type="info",
+                message="API server started with waitress-serve",
+                message_id="ServerAction",
+                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            )
+
+            # Start the server with waitress
+            exit_code = os_system_cmd(
+                f"waitress-serve "
+                f"--host={API_SERVER_HOST} "
+                f"--port={API_SERVER_PORT} "
+                f"{'--url-scheme=https' if API_SERVER_SSL else ''} "
+                f"api_server:main_api"
+            )
+
+            # Log shutdown event
+            log(
+                log_type="info",
+                message=f"API server started with waitress shutdown with code {exit_code}",
+                message_id="ServerAction",
+                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            )
+
+        except Exception as exc:
+          log(
+              log_type="error",
+              message=f"Exception while starting API server with waitress-serve: {exc}",
+              message_id="ServerAction",
+              structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+          )

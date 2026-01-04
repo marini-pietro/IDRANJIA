@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Updated program names in the specified order
+# List of program names to kill
 PROGRAM_NAMES=("log_server.py" "auth_server.py" "api_server.py")
 
 for PROGRAM_NAME in "${PROGRAM_NAMES[@]}"; do
