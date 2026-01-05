@@ -79,7 +79,10 @@ Recommended environment overrides (examples):
 
 - Review test coverage.
 - Remove any sensitive/weak settings that may affect security.
-- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files).
+- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files). Here's how to separate each server:
+    - The log server consists of `log_server.py`, `log_config.py` and the relevant `.env` file.
+    - The auth server consists of `auth_server.py`, `auth_config.py`, `models.py` (only needs SQLAlchemy instance and User resource abstraction but, for simplicity, the file can just be copied the same way that it is for the API server) and the relevant `.env` file.
+    - The API server consists of `api_server.py`, `api_config.py`, `api_blueprints` folder, `models.py` and the relevant `.env` file.
 - Using admin utilities (still being worked on) test that all the security measures function properly.
 
 ## Troubleshooting pointers

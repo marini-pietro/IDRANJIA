@@ -41,46 +41,49 @@ SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog 
 
 # API server related settings
 # | API server settings
-API_SERVER_HOST: str = os_environ.get("API_SERVER_HOST", "localhost")
-API_SERVER_PORT: int = int(os_environ.get("API_SERVER_PORT", 5000))
-API_SERVER_NAME_IN_LOG: str = os_environ.get("API_SERVER_NAME_IN_LOG", "api-server")
-API_VERSION: str = os_environ.get("API_VERSION", "v1")
-URL_PREFIX: str = f"/api/{API_VERSION}"
-API_SERVER_DEBUG_MODE: bool = os_environ.get("API_SERVER_DEBUG_MODE", "True") == "True"
-API_SERVER_RATE_LIMIT: bool = os_environ.get("API_SERVER_RATE_LIMIT", "True") == "True"
-API_SERVER_MAX_JSON_SIZE = int(os_environ.get("API_SERVER_MAX_JSON_SIZE", 50 * 10244))
-SQL_SCAN_MAX_LEN = int(os_environ.get("SQL_SCAN_MAX_LEN", 2048))
-SQL_SCAN_MAX_RECURSION_DEPTH = int(os_environ.get("SQL_SCAN_MAX_RECURSION_DEPTH", 10))
+API_SERVER_HOST: str = os_environ.get("API_SERVER_HOST", "localhost") # host to run the API server on
+API_SERVER_PORT: int = int(os_environ.get("API_SERVER_PORT", 5000)) # port to run the API server on
+API_SERVER_IDENTIFIER: str = os_environ.get("API_SERVER_IDENTIFIER", "api-server-1") # identifier of the API server (used to distinguish multiple api servers if needed) (also the name that shows up in logs)
+API_VERSION: str = os_environ.get("API_VERSION", "v1") # version of the API
+URL_PREFIX: str = f"/api/{API_VERSION}" # prefix for all API endpoints
+API_SERVER_DEBUG_MODE: bool = os_environ.get("API_SERVER_DEBUG_MODE", "True") == "True" # enable/disable debug mode for flask built-in server (required to be False to simulate production environment) (see production_scripts/README.txt)
+API_SERVER_RATE_LIMIT: bool = os_environ.get("API_SERVER_RATE_LIMIT", "True") == "True" # enable/disable rate limiting on the API server
+API_SERVER_MAX_JSON_SIZE = int(os_environ.get("API_SERVER_MAX_JSON_SIZE", 50 * 10244)) # max size (in bytes) of incoming JSON payloads
+SQL_SCAN_MAX_LEN = int(os_environ.get("SQL_SCAN_MAX_LEN", 2048)) # max length of input strings to scan for SQL injection attempts
+SQL_SCAN_MAX_RECURSION_DEPTH = int(os_environ.get("SQL_SCAN_MAX_RECURSION_DEPTH", 10)) # max recursion depth when scanning nested data structures for SQL injection attempts
 LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
     "localhost",
     "127.0.0.1",
-}
-API_SERVER_SSL_CERT: str = os_environ.get("API_SERVER_SSL_CERT", "")
-API_SERVER_SSL_KEY: str = os_environ.get("API_SERVER_SSL_KEY", "")
+} # whether login endpoint is available through the API server
+  # in some cases (e.g. when the same machine hosts both the API server and the auth server) it might desireable for security reasons
+  # to only expose to the public the API server and have it redirect login requests to the auth server running on localhost
+  # (based on case-by-case needs the IP address can be added or removed to the set above) 
+API_SERVER_SSL_CERT: str = os_environ.get("API_SERVER_SSL_CERT", "") # path to SSL certificate file (leave empty to disable SSL)
+API_SERVER_SSL_KEY: str = os_environ.get("API_SERVER_SSL_KEY", "") # path to SSL key file (leave empty to disable SSL)
 API_SERVER_SSL: bool = not (
     API_SERVER_SSL_CERT == "" and API_SERVER_SSL_KEY == ""
-)
+) # Whether the API server uses SSL/TLS or not
 
 # JWT custom configuration
-JWT_SECRET_KEY: str = os_environ.get("JWT_SECRET_KEY", "Lorem ipsum dolor sit amet eget.")
-JWT_ALGORITHM: str = os_environ.get("JWT_ALGORITHM", "HS256")
+JWT_SECRET_KEY: str = os_environ.get("JWT_SECRET_KEY", "Lorem ipsum dolor sit amet eget.") # secret key for signing JWTs
+JWT_ALGORITHM: str = os_environ.get("JWT_ALGORITHM", "HS256") # algorithm used for signing JWTs
 JWT_QUERY_STRING_NAME = os_environ.get("JWT_QUERY_STRING_NAME", "jwt_token") # name of the query string parameter to look for JWTs (if JWTs are sent via query string, not recommended for production)
 JWT_JSON_KEY = os_environ.get("JWT_JSON_KEY", "jwt_token") # name of the JSON key to look for JWTs (if JWTs are sent via JSON body)
-JWT_REFRESH_JSON_KEY = os_environ.get("JWT_REFRESH_JSON_KEY", "jwt_refresh_token")
-JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,json").split(",")
-JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10)))
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3)))
+JWT_REFRESH_JSON_KEY = os_environ.get("JWT_REFRESH_JSON_KEY", "jwt_refresh_token") # name of the JSON key to look for refresh JWTs (if refresh JWTs are sent via JSON body)
+JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,json").split(",") # locations to look for JWTs
+JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10))) # refresh token expiration time
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3))) # access token expiration time
 
 # | Database configuration
-DB_HOST = os_environ.get("DB_HOST", "localhost")
-DB_NAME = os_environ.get("DB_NAME", "idranjia")
-DB_USER = os_environ.get("DB_USER", "postgres")
-DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres")
+DB_HOST = os_environ.get("DB_HOST", "localhost") # database host
+DB_NAME = os_environ.get("DB_NAME", "idranjia") # database name
+DB_USER = os_environ.get("DB_USER", "postgres") # database user
+DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres") # database password
 DB_PORT = os_environ.get("DB_PORT", "5432")
 SQLALCHEMY_DATABASE_URI = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
-SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True"
+) # database URI for SQLAlchemy
+SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True" # disable/enable flask sql alchemy track modifications (will have performance impact, recommended to keep it disabled)
 
 
 # Miscellaneous settings
@@ -116,9 +119,9 @@ NOT_AUTHORIZED_MESSAGE: Dict[str, str] = {
 }
 
 # | Regex pattern for SQL injection detection
-# This regex pattern is used to detect SQL injection attempts in user input.
-# It matches common SQL keywords and commands that are often used in SQL injection attacks.
-# Precompile the regex pattern once
+#   This regex pattern is used to detect SQL injection attempts in user input.
+#   It matches common SQL keywords and commands that are often used in SQL injection attacks.
+#   Precompile the regex pattern once
 SQL_PATTERN = re_compile(
     r"\b("
     + "|".join(
@@ -178,7 +181,7 @@ SQL_PATTERN = re_compile(
     RE_IGNORECASE,
 )
 
-# Flasgger (Swagger UI) configuration
+# | Flasgger (Swagger UI) configuration
 SWAGGER_CONFIG = {
     "headers": [],
     "specs": [
@@ -194,8 +197,8 @@ SWAGGER_CONFIG = {
     "specs_route": "/docs/",
 }
 
-# Invalid JWT token related messages
-# Store plain payload dicts and status codes here; call jsonify() inside request handlers.
+# | Invalid JWT token related messages
+#   Store plain payload dicts and status codes here; call jsonify() inside request handlers.
 INVALID_JWT_MESSAGES: Dict[str, Tuple[Dict[str, str], int]] = {
     "missing_token": ({"error": "missing token"}, STATUS_CODES["unauthorized"]),
     "invalid_token": (

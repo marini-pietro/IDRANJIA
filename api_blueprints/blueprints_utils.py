@@ -21,7 +21,7 @@ from requests.exceptions import RequestException
 
 from api_config import (
     API_SERVER_HOST,
-    API_SERVER_NAME_IN_LOG,
+    API_SERVER_IDENTIFIER,
     API_SERVER_PORT,
     API_SERVER_SSL,
     AUTH_SERVER_HOST,
@@ -349,7 +349,7 @@ log_thread.start()
 def log(
     log_type: str,
     message: str,
-    origin_name: str = API_SERVER_NAME_IN_LOG,
+    origin_name: str = API_SERVER_IDENTIFIER,
     origin_host: str = API_SERVER_HOST,
     message_id: str = "UserAction",
     structured_data: Union[str, Dict[str, Any]] = "- -",

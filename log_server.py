@@ -27,7 +27,7 @@ from log_config import (
     LOG_SERVER_PORT,
     LOG_FILE_NAME,
     LOGGER_NAME,
-    LOG_SERVER_NAME_IN_LOG,
+    LOG_SERVER_IDENTIFIER,
     LOG_SERVER_RATE_LIMIT,
     DELAYED_LOGS_QUEUE_SIZE,
     RETAIN_LOGS_RATE_LIMIT_TRIGGER,
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     logger.log(
         log_type="info",
         message="Starting syslog server...",
-        origin=LOG_SERVER_NAME_IN_LOG,
+        origin=LOG_SERVER_IDENTIFIER,
     )
 
     try:
@@ -513,11 +513,11 @@ if __name__ == "__main__":
         logger.log(
             log_type="info",
             message="Syslog server stopped by user via KeyboardInterrupt.",
-            origin=LOG_SERVER_NAME_IN_LOG,
+            origin=LOG_SERVER_IDENTIFIER,
         )
     except Exception as ex:
         logger.log(
             log_type="warning",
             message=f"Syslog server encountered stopped with exception: {ex}",
-            origin=LOG_SERVER_NAME_IN_LOG,
+            origin=LOG_SERVER_IDENTIFIER,
         )

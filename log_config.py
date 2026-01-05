@@ -12,7 +12,7 @@ LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host on 
 LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5002)) # port on which the log server listens for incoming syslog messages
 LOG_FILE_NAME: str = os_environ.get("LOG_FILE_NAME", "idranjia_log.txt") # name of the log file where logs are stored
 LOGGER_NAME: str = os_environ.get("LOGGER_NAME", "idranjia_logger") # name of the logger used in the log server
-LOG_SERVER_NAME_IN_LOG: str = os_environ.get("LOG_SERVER_NAME_IN_LOG", "log-server") # with which name the log server shows up in logs
+LOG_SERVER_IDENTIFIER: str = os_environ.get("LOG_SERVER_IDENTIFIER", "log-server-1") # identifier of the log server (used to distinguish multiple log servers if needed) (also the name that shows up in logs)
 LOG_SERVER_RATE_LIMIT: bool = os_environ.get("LOG_SERVER_RATE_LIMIT", "True") == "True" # enable/disable rate limiting on the log server
 DELAYED_LOGS_QUEUE_SIZE: int = int(os_environ.get("DELAYED_LOGS_QUEUE_SIZE", 100)) # Size of the queue for delayed logs
 # (if the queue is full, the oldest logs will

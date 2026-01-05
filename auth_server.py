@@ -28,7 +28,7 @@ from auth_config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
     AUTH_API_VERSION,
-    AUTH_SERVER_NAME_IN_LOG,
+    AUTH_SERVER_IDENTIFIER,
     AUTH_SERVER_DEBUG_MODE,
     AUTH_SERVER_RATE_LIMIT,
     AUTH_SERVER_SSL_CERT,
@@ -93,7 +93,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
     log(
       log_type="warning",
       message="Stored password format invalid",
-      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_name=AUTH_SERVER_IDENTIFIER,
       origin_host=AUTH_SERVER_HOST,
     )
     return False
@@ -107,7 +107,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
     log(
       log_type="warning",
       message="Base64 decoding failed for stored password components",
-      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_name=AUTH_SERVER_IDENTIFIER,
       origin_host=AUTH_SERVER_HOST,
     )
     return False
@@ -135,7 +135,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
     log(
       log_type="error",
       message=f"Unexpected error during password verification: {exc}",
-      origin_name=AUTH_SERVER_NAME_IN_LOG,
+      origin_name=AUTH_SERVER_IDENTIFIER,
       origin_host=AUTH_SERVER_HOST,
     )
     return False
@@ -291,7 +291,7 @@ def login():
         log(
             log_type="info",
             message=f"User {email} logged in",
-            origin_name=AUTH_SERVER_NAME_IN_LOG,
+            origin_name=AUTH_SERVER_IDENTIFIER,
             origin_host=AUTH_SERVER_HOST,
             structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
         )
@@ -383,7 +383,7 @@ def refresh():
     log(
         log_type="info",
         message=f"Access token refreshed for identity {identity}",
-        origin_name=AUTH_SERVER_NAME_IN_LOG,
+        origin_name=AUTH_SERVER_IDENTIFIER,
         origin_host=AUTH_SERVER_HOST,
         structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
     )
@@ -427,7 +427,7 @@ if __name__ == "__main__":
             log(
                 log_type="info",
                 message=f"Auth server starting with Flask built-in server with debug mode set to {AUTH_SERVER_DEBUG_MODE}",
-                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_name=AUTH_SERVER_IDENTIFIER,
                 origin_host=AUTH_SERVER_HOST,
                 message_id="ServerAction",
                 structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
@@ -447,7 +447,7 @@ if __name__ == "__main__":
             log(
                 log_type="info",
                 message=f"Auth server stopped (Flask run() exited)",
-                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_name=AUTH_SERVER_IDENTIFIER,
                 origin_host=AUTH_SERVER_HOST,
                 message_id="ServerAction",
                 structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
@@ -456,7 +456,7 @@ if __name__ == "__main__":
             log(
                 log_type="error",
                 message=f"Exception while starting auth server with Flask: {ex}",
-                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_name=AUTH_SERVER_IDENTIFIER,
                 origin_host=AUTH_SERVER_HOST,
                 message_id="ServerAction",
                 structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
@@ -469,7 +469,7 @@ if __name__ == "__main__":
           log(
                 log_type="info",
                 message="Auth server starting with waitress-serve",
-                origin_name=AUTH_SERVER_NAME_IN_LOG,
+                origin_name=AUTH_SERVER_IDENTIFIER,
                 origin_host=AUTH_SERVER_HOST,
                 message_id="ServerAction",
                 structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
@@ -488,7 +488,7 @@ if __name__ == "__main__":
           log(
               log_type="info",
               message=f"Auth server started with waitress shutdown with code {exit_code}",
-              origin_name=AUTH_SERVER_NAME_IN_LOG,
+              origin_name=AUTH_SERVER_IDENTIFIER,
               origin_host=AUTH_SERVER_HOST,
               message_id="ServerAction",
               structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
@@ -497,7 +497,7 @@ if __name__ == "__main__":
           log(
               log_type="error",
               message=f"Exception while starting auth server with waitress-serve: {exc}",
-              origin_name=AUTH_SERVER_NAME_IN_LOG,
+              origin_name=AUTH_SERVER_IDENTIFIER,
               origin_host=AUTH_SERVER_HOST,
               message_id="ServerAction",
               structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",

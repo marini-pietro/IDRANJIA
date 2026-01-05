@@ -30,14 +30,14 @@ else:
     print("No .env file found.")
 
 # Authentication server related settings
-AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost")
-AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5001))
-AUTH_API_VERSION: str = os_environ.get("AUTH_API_VERSION", "v1")
-AUTH_SERVER_NAME_IN_LOG: str = os_environ.get("AUTH_SERVER_NAME_IN_LOG", "auth-server")
-AUTH_SERVER_DEBUG_MODE: bool = os_environ.get("AUTH_SERVER_DEBUG_MODE", "True") == "True"
-AUTH_SERVER_RATE_LIMIT: bool = os_environ.get("AUTH_SERVER_RATE_LIMIT", "True") == "True"
-AUTH_SERVER_SSL_CERT: str = os_environ.get("AUTH_SERVER_SSL_CERT", "")
-AUTH_SERVER_SSL_KEY: str = os_environ.get("AUTH_SERVER_SSL_KEY", "")
+AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost") # host to run the auth server on
+AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5001)) # port to run the auth server on
+AUTH_SERVER_IDENTIFIER: str = os_environ.get("AUTH_SERVER_IDENTIFIER", "auth-server-1") # identifier of the auth server (used to distinguish multiple auth servers if needed) (also the name that shows up in logs)
+AUTH_API_VERSION: str = os_environ.get("AUTH_API_VERSION", "v1") # version of the auth API
+AUTH_SERVER_DEBUG_MODE: bool = os_environ.get("AUTH_SERVER_DEBUG_MODE", "True") == "True" # enable/disable debug mode for flask built-in server (required to be False to simulate production environment) (see production_scripts/README.txt)
+AUTH_SERVER_RATE_LIMIT: bool = os_environ.get("AUTH_SERVER_RATE_LIMIT", "True") == "True" # enable/disable rate limiting on the auth server
+AUTH_SERVER_SSL_CERT: str = os_environ.get("AUTH_SERVER_SSL_CERT", "") # path to SSL certificate file (leave empty to disable SSL)
+AUTH_SERVER_SSL_KEY: str = os_environ.get("AUTH_SERVER_SSL_KEY", "") # path to SSL key file (leave empty to disable SSL)
 AUTH_SERVER_SSL: bool = not (
     AUTH_SERVER_SSL_CERT == "" and AUTH_SERVER_SSL_KEY == ""
 )  # Whether the authentication server uses SSL/TLS or not
@@ -51,26 +51,26 @@ PBKDF2HMAC_SETTINGS: Dict[str, int] = {
 }
 
 # JWT custom configuration (must match those in api_config.py)
-JWT_SECRET_KEY: str = os_environ.get("JWT_SECRET_KEY", "Lorem ipsum dolor sit amet eget.")
-JWT_ALGORITHM: str = os_environ.get("JWT_ALGORITHM", "HS256")
-JWT_QUERY_STRING_NAME = os_environ.get("JWT_QUERY_STRING_NAME", "jwt_token")
-JWT_JSON_KEY = os_environ.get("JWT_JSON_KEY", "jwt_token")
-JWT_REFRESH_JSON_KEY = os_environ.get("JWT_REFRESH_JSON_KEY", "jwt_refresh_token")
-JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,json").split(",")
-JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10)))
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3)))
+JWT_SECRET_KEY: str = os_environ.get("JWT_SECRET_KEY", "Lorem ipsum dolor sit amet eget.") # secret key for signing JWTs
+JWT_ALGORITHM: str = os_environ.get("JWT_ALGORITHM", "HS256") # algorithm used for signing JWTs
+JWT_QUERY_STRING_NAME = os_environ.get("JWT_QUERY_STRING_NAME", "jwt_token") # name of the query string parameter for JWTs
+JWT_JSON_KEY = os_environ.get("JWT_JSON_KEY", "jwt_token") # name of the JSON key for JWTs
+JWT_REFRESH_JSON_KEY = os_environ.get("JWT_REFRESH_JSON_KEY", "jwt_refresh_token") # name of the JSON key for refresh JWTs
+JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,json").split(",") # locations to look for JWTs
+JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10))) # refresh token expiration time
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3))) # access token expiration time
 
 # | Database configuration
-DB_HOST = os_environ.get("DB_HOST", "localhost")
-DB_NAME = os_environ.get("DB_NAME", "idranjia")
-DB_USER = os_environ.get("DB_USER", "postgres")
-DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres")
-DB_PORT = os_environ.get("DB_PORT", "5432")
+DB_HOST = os_environ.get("DB_HOST", "localhost") # database host
+DB_NAME = os_environ.get("DB_NAME", "idranjia") # database name
+DB_USER = os_environ.get("DB_USER", "postgres") # database user
+DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres") # database password
+DB_PORT = os_environ.get("DB_PORT", "5432") # database port
 
 SQLALCHEMY_DATABASE_URI = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
-SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True"
+) # database URI for SQLAlchemy
+SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True" # disable/enable flask sql alchemy track modifications (will have performance impact, recommended to keep it disabled)
 
 
 # Miscellaneous settings
