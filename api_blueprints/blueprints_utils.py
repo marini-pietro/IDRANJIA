@@ -19,14 +19,14 @@ from requests import post as requests_post
 from requests.exceptions import Timeout
 from requests.exceptions import RequestException
 
-from config import (
+from api_config import (
     API_SERVER_HOST,
     API_SERVER_NAME_IN_LOG,
     API_SERVER_PORT,
     API_SERVER_SSL,
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
-    AUTH_SERVER_SSL,
+    IS_AUTH_SERVER_SSL,
     JWT_JSON_KEY,
     JWT_QUERY_STRING_NAME,
     JWT_VALIDATION_CACHE_SIZE,
@@ -92,7 +92,7 @@ def jwt_validation_required(func):
                 # Send a request to the authentication server to validate the token
                 # Proper json body and headers are not needed
                 response: Response = requests_post(
-                    f"{"https" if AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/validate",
+                    f"{"https" if IS_AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/validate",
                     headers={"Authorization": f"Bearer {token}"},
                     timeout=5,  # in seconds
                 )

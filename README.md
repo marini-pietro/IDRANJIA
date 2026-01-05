@@ -60,10 +60,12 @@ This project implements several security measures. Highlights below reference th
 
 ## Configuration and secrets (what to review before production)
 
-- Verify and replace any default secrets and DB credentials in `config.py` with secure values.
+- To streamline the process of separating the services into different machines, a config file has been created for each server. In a testing/development environment these virtually function as a single monolithic configuration file.
+Unavoidably, there is some overlap between some of the configuration files, these always have to match the other configuration/settings.
+- Verify and replace any default secrets and DB credentials in `*_config.py` with secure values.
 - Confirm token lifetimes and locations are suited to your deployment. Avoid `query_string` token locations in public-facing environments.
 
-- The `config.py` file centralizes default settings. Sensitive values in the repo (like the default `JWT_SECRET_KEY` and DB credentials) are for convenience in local development only. For production, you should:
+- The `*.config.py` files centralize default settings. Sensitive values in the repo (like the default `JWT_SECRET_KEY` and DB credentials) are for convenience in local development only. For production, you should:
 	- Replace `JWT_SECRET_KEY` with a long, randomly generated secret (recommended >= 32 bytes). Use an environment variable or secret manager.
 	- Use secure DB credentials and restrict DB network access.
 	- Disable `API_SERVER_DEBUG_MODE` and `AUTH_SERVER_DEBUG_MODE` in production.
@@ -72,6 +74,13 @@ Recommended environment overrides (examples):
 
 - `JWT_SECRET_KEY` — use a securely generated key (e.g., 32+ bytes from `openssl rand -base64 48`).
 - `SQLALCHEMY_DATABASE_URI` — use a production DB URI rather than the local defaults.
+
+# Rough road map to move into production
+
+- Review test coverage.
+- Remove any sensitive/weak settings that may affect security.
+- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files).
+- Using admin utilities (still being worked on) test that all the security measures function properly.
 
 ## Troubleshooting pointers
 

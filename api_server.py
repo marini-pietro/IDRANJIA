@@ -26,11 +26,10 @@ from sqlalchemy.exc import OperationalError
 # Local imports
 from api_blueprints.blueprints_utils import log, is_rate_limited
 from models import db
-from config import (
+from api_config import (
     API_SERVER_HOST,
     API_SERVER_PORT,
     API_SERVER_DEBUG_MODE,
-    AUTH_SERVER_PORT,
     STATUS_CODES,
     API_VERSION,
     URL_PREFIX,
@@ -41,6 +40,7 @@ from config import (
     JWT_REFRESH_JSON_KEY,
     JWT_TOKEN_LOCATION,
     JWT_REFRESH_TOKEN_EXPIRES,
+    JWT_ACCESS_TOKEN_EXPIRES,
     API_SERVER_RATE_LIMIT,
     API_SERVER_SSL,
     API_SERVER_SSL_CERT,
@@ -57,6 +57,20 @@ from config import (
 
 # Create a Flask app
 main_api = Flask(__name__)
+
+# Update configuration settings for the Flask app
+main_api.config.update(
+    JWT_SECRET_KEY=JWT_SECRET_KEY, # Same secret key as the auth microservice
+    JWT_ALGORITHM=JWT_ALGORITHM,   # Same algorithm as the auth microservice
+    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION, # Where to look for tokens
+    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME, # Custom query string name
+    JWT_JSON_KEY=JWT_JSON_KEY,     # Custom JSON key for access tokens
+    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY, # Custom JSON key for refresh tokens
+    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES, # Refresh token valid duration
+    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,     # Access token valid duration
+    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI, # Database connection URI
+    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS, # Disable track modifications
+)
 
 # Add OpenAPI specs for auth_server endpoints to the Swagger template
 swagger_template = {
@@ -199,34 +213,13 @@ main_api.config["SWAGGER"] = {
 # Initialize Swagger
 swagger = Swagger(main_api, template=swagger_template, config=SWAGGER_CONFIG)
 
-# Configure JWT validation settings
-main_api.config["JWT_SECRET_KEY"] = (
-    JWT_SECRET_KEY  # Same secret key as the auth microservice
-)
-main_api.config["JWT_ALGORITHM"] = (
-    JWT_ALGORITHM  # Same algorithm as the auth microservice
-)
-main_api.config["JWT_TOKEN_LOCATION"] = JWT_TOKEN_LOCATION  # Where to look for tokens
-main_api.config["JWT_QUERY_STRING_NAME"] = (
-    JWT_QUERY_STRING_NAME  # Custom query string name
-)
-main_api.config["JWT_JSON_KEY"] = JWT_JSON_KEY  # Custom JSON key for access tokens
-main_api.config["JWT_REFRESH_JSON_KEY"] = (
-    JWT_REFRESH_JSON_KEY  # Custom JSON key for refresh tokens
-)
-main_api.config["JWT_REFRESH_TOKEN_EXPIRES"] = (
-    JWT_REFRESH_TOKEN_EXPIRES  # Refresh token valid duration
-)
-main_api.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
-main_api.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
-
 # Initialize JWTManager for validation only
 jwt = JWTManager(main_api)
 
 # Initialize Marshmallow
 ma = Marshmallow(main_api)
 
-# Initialize SQLAlchemy
+# Initialize database (ORM abstraction layer)
 db.init_app(main_api)
 
 # Standardized error message constants for consistent JSON responses
