@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.dialects.postgresql import ENUM
 
 db = SQLAlchemy()
 
@@ -30,6 +31,7 @@ class Hydrant(db.Model):
             "email_ins": self.email_ins,
         }
 
+user_role_enum = ENUM('admin', 'operator', 'viewer', name='user_role')
 
 class User(db.Model):
     __tablename__ = "utenti"
@@ -38,8 +40,8 @@ class User(db.Model):
     nome = db.Column(db.String, nullable=False)
     cognome = db.Column(db.String, nullable=False)
     password = db.Column(db.String, nullable=False)
-    admin = db.Column(db.Boolean, nullable=False)
-
+    ruolo = db.Column(user_role_enum, nullable=False, default='viewer')
+    
     def to_dict(self):
         return {
             "email": self.email,
@@ -47,7 +49,7 @@ class User(db.Model):
             "nome": self.nome,
             "cognome": self.cognome,
             "password": self.password,
-            "admin": self.admin,
+            "ruolo": self.ruolo,
         }
 
 

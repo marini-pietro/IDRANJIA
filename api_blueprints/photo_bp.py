@@ -23,7 +23,7 @@ from .blueprints_utils import (
     handle_options_request,
     get_hateos_location_string,
 )
-from config import (
+from api_config import (
     STATUS_CODES,
 )
 

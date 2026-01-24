@@ -46,7 +46,7 @@ AUTH_SERVER_SSL: bool = not (
 PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "algorithm": hashes.SHA256(),
     "length": 32,
-    "iterations": 100000,
+    "iterations": 310_000, # Minimum amount recommended by OWASP as of 2025 (should be increased is latency budget allows it)
     "backend": default_backend(),
 }
 

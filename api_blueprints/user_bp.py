@@ -19,13 +19,14 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from marshmallow import fields, ValidationError
 
 # Local imports
-from config import (
+from api_config import (
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
     PBKDF2HMAC_SETTINGS,
     STATUS_CODES,
     LOGIN_AVAILABLE_THROUGH_API,
-    AUTH_SERVER_SSL,
+    IS_AUTH_SERVER_SSL,
+    AUTH_API_VERSION,
 )
 from api_server import ma
 
@@ -586,7 +587,7 @@ class UserLogin(Resource):
         try:
             # Forward login request to the authentication service
             response = requests_post(
-                f"{"https" if AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/login",
+                f"{"https" if IS_AUTH_SERVER_SSL else "http"}://{AUTH_SERVER_HOST}:{AUTH_SERVER_PORT}/auth/{AUTH_API_VERSION}/login",
                 json={"email": email, "password": password},
                 timeout=5,
             )

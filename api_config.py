@@ -14,13 +14,14 @@ else:
 # Authentication server related settings
 AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost")
 AUTH_SERVER_PORT: int = int(os_environ.get("AUTH_SERVER_PORT", 5001))
+AUTH_API_VERSION: str = os_environ.get("AUTH_API_VERSION", "v1")
 IS_AUTH_SERVER_SSL: bool = os_environ.get("IS_AUTH_SERVER_SSL", "False") == "True"
 JWT_VALIDATION_CACHE_SIZE: int = int(os_environ.get("JWT_VALIDATION_CACHE_SIZE", 1000))
 JWT_VALIDATION_CACHE_TTL: int = int(os_environ.get("JWT_VALIDATION_CACHE_TTL", 3600))
 # PBKDF2 HMAC settings for password hashing (have to match those in auth_config.py)
 PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "algorithm": hashes.SHA256(),
-    "length": 32,
+    "length": 32, # length of the derived key in bytes
     "iterations": 100000,
     "backend": default_backend(),
 }
@@ -60,7 +61,7 @@ LOGIN_AVAILABLE_THROUGH_API: bool = AUTH_SERVER_HOST in {
   # (based on case-by-case needs the IP address can be added or removed to the set above) 
 API_SERVER_SSL_CERT: str = os_environ.get("API_SERVER_SSL_CERT", "") # path to SSL certificate file (leave empty to disable SSL)
 API_SERVER_SSL_KEY: str = os_environ.get("API_SERVER_SSL_KEY", "") # path to SSL key file (leave empty to disable SSL)
-API_SERVER_SSL: bool = not (
+IS_API_SERVER_SSL: bool = not (
     API_SERVER_SSL_CERT == "" and API_SERVER_SSL_KEY == ""
 ) # Whether the API server uses SSL/TLS or not
 

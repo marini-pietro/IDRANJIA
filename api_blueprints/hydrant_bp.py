@@ -22,7 +22,7 @@ from .blueprints_utils import (
 # Local imports
 from api_server import ma
 from models import db, Hydrant, User
-from config import (
+from api_config import (
     STATUS_CODES,
 )
 

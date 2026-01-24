@@ -42,7 +42,7 @@ from api_config import (
     JWT_REFRESH_TOKEN_EXPIRES,
     JWT_ACCESS_TOKEN_EXPIRES,
     API_SERVER_RATE_LIMIT,
-    API_SERVER_SSL,
+    IS_API_SERVER_SSL,
     API_SERVER_SSL_CERT,
     API_SERVER_SSL_KEY,
     API_SERVER_MAX_JSON_SIZE,
@@ -763,7 +763,7 @@ if __name__ == "__main__":
                 structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
             )
             print(
-                "ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config."
+                f"ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config.\n Current SQLALCHEMY_DATABASE_URI={SQLALCHEMY_DATABASE_URI}"
             ) # Print to console for immediate feedback
             sys.exit(1) # exit with error
 
@@ -786,14 +786,17 @@ if __name__ == "__main__":
         )      
 
         # Start the server with Flask's built-in server
-        main_api.run(
-            host=API_SERVER_HOST,
-            port=API_SERVER_PORT,
-            debug=API_SERVER_DEBUG_MODE,
-            ssl_context=(
-                (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if API_SERVER_SSL else None
-            ),
-        )
+        if (API_SERVER_SSL_CERT == "") != (API_SERVER_SSL_KEY == ""):
+            raise ValueError("Both SSL certificate and key must be provided, or both left empty")
+        else:
+            main_api.run(
+                host=API_SERVER_HOST,
+                port=API_SERVER_PORT,
+                debug=API_SERVER_DEBUG_MODE,
+                ssl_context=(
+                    (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if IS_API_SERVER_SSL else None
+                ),
+            )
 
         # Log server stop event only if run() returns (which is rare, usually only on shutdown)
         log(
@@ -818,7 +821,7 @@ if __name__ == "__main__":
                 f"waitress-serve "
                 f"--host={API_SERVER_HOST} "
                 f"--port={API_SERVER_PORT} "
-                f"{'--url-scheme=https' if API_SERVER_SSL else ''} "
+                f"{'--url-scheme=https' if IS_API_SERVER_SSL else ''} "
                 f"api_server:main_api"
             )
 

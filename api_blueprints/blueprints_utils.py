@@ -23,7 +23,7 @@ from api_config import (
     API_SERVER_HOST,
     API_SERVER_IDENTIFIER,
     API_SERVER_PORT,
-    API_SERVER_SSL,
+    IS_API_SERVER_SSL,
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
     IS_AUTH_SERVER_SSL,
@@ -218,7 +218,7 @@ def get_hateos_location_string(bp_name: str, id_: Union[str, int]) -> str:
         str: The location string for HATEOAS links.
     """
 
-    protocol = "https" if API_SERVER_SSL else "http"
+    protocol = "https" if IS_API_SERVER_SSL else "http"
     return (
         f"{protocol}://{API_SERVER_HOST}:{API_SERVER_PORT}{URL_PREFIX}{bp_name}/{id_}"
     )
