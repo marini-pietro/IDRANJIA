@@ -364,21 +364,21 @@ class OperatorPostResource(Resource):
                                 type: string
                                 example: Rossi
         responses:
-        201:
-                description: Operator created
-                content:
-                application/json:
-                        schema:
-                        type: object
-                        properties:
-                                outcome:
-                                type: string
-                                example: operator successfully created
-                                location:
-                                type: string
-                                example: https://localhost:5000/api/v1/operator/RSSMRA80A01F205X
-        400:
-                description: Invalid input
+          201:
+                  description: Operator created
+                  content:
+                  application/json:
+                          schema:
+                          type: object
+                          properties:
+                                  outcome:
+                                  type: string
+                                  example: operator successfully created
+                                  location:
+                                  type: string
+                                  example: https://localhost:5000/api/v1/operator/RSSMRA80A01F205X
+          400:
+                  description: Invalid input
         """
 
         try:
@@ -442,8 +442,8 @@ class OperatorPostResource(Resource):
         security:
         - bearerAuth: []
         responses:
-        200:
-                description: Allowed methods returned
+          200:
+                  description: Allowed methods returned
         """
         return handle_options_request(resource_class=self)
 

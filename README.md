@@ -25,6 +25,11 @@ Each blueprint corresponds to a logical resource (hydrant, control, photo, opera
   
 - `tests/` — pytest suites covering the microservices and blueprints.
 
+## Documentation
+
+Endpoint documentation is available through Swagger UI at `http(s)://{api_host}:{api_port}/docs/` with the relative configuration in `api_config.py` and template in `api_server.py`.
+Each endpoint documentation is modifiable by editing the docstring of said function, all other documentation is avaible in the code itself or in the README files for high-level explanations.
+
 ## Security measures
 
 This project implements several security measures. Highlights below reference the code and the config values in `config.py`.
