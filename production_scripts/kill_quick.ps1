@@ -1,35 +1,36 @@
-# Kill log_server.py as a normal Python process
-$logProcs = Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.CommandLine -match "log_server.py" }
-if ($logProcs) {
-    foreach ($proc in $logProcs) {
-        try {
-            Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-            Write-Host "Successfully killed log_server.py (PID: $($proc.Id))" -ForegroundColor Green
-        } catch {
-            Write-Host "Failed to kill log_server.py (PID: $($proc.Id))." -ForegroundColor Red
-        }
-    }
-} else {
-    Write-Host "No running process found for log_server.py" -ForegroundColor Yellow
-}
+# Microservices Process Killer - Improved Version
+Write-Host "Stopping microservices..." -ForegroundColor Yellow
 
-# Kill auth_server and api_server as Waitress processes
-$waitressScripts = @("auth_server.py", "api_server.py")
-foreach ($script in $waitressScripts) {
+# Define all services
+$services = @(
+    @{ Name = "log_server"; Script = "log_server.py" },
+    @{ Name = "auth_server"; Script = "auth_server.py" },
+    @{ Name = "api_server"; Script = "api_server.py" }
+)
+
+foreach ($service in $services) {
+    $scriptName = $service.Script
     $found = $false
-    $procs = Get-CimInstance Win32_Process | Where-Object {
-        $_.CommandLine -match "waitress" -and $_.CommandLine -match [regex]::Escape($script)
-    }
-    foreach ($proc in $procs) {
-        $found = $true
-        try {
-            Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
-            Write-Host "Successfully killed Waitress process for: $script (PID: $($proc.ProcessId))" -ForegroundColor Green
-        } catch {
-            Write-Host "Failed to kill Waitress process for: $script (PID: $($proc.ProcessId))." -ForegroundColor Red
+    
+    # Find processes by command line (more reliable than process name)
+    $processes = Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%$scriptName%'"
+    
+    if ($processes) {
+        foreach ($proc in $processes) {
+            $found = $true
+            $pid = $proc.ProcessId
+            $cmdLine = $proc.CommandLine
+            
+            try {
+                Stop-Process -Id $pid -Force -ErrorAction Stop
+                Write-Host "Killed $scriptName (PID: $pid)" -ForegroundColor Green
+            } catch {
+                Write-Host "Failed to kill $scriptName (PID: $pid): $($_.Exception.Message)" -ForegroundColor Red
+            }
         }
     }
+    
     if (-not $found) {
-        Write-Host "No running Waitress process found for: $script" -ForegroundColor Yellow
+        Write-Host "~ No process found for $scriptName" -ForegroundColor Gray
     }
 }

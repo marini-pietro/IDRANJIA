@@ -1,22 +1,28 @@
 #!/bin/bash
 
-# List of program names to kill
-PROGRAM_NAMES=("log_server.py" "auth_server.py" "api_server.py")
+SERVICE_NAMES=("log_server" "auth_server" "api_server")
+TIMEOUT=1 # seconds to wait for graceful shutdown
 
-for PROGRAM_NAME in "${PROGRAM_NAMES[@]}"; do
-    # Find and kill processes by name
-    PIDS=$(pgrep -f "$PROGRAM_NAME")
+echo "Stopping microservices..."
 
-    if [ -z "$PIDS" ]; then
-        echo "No processes found with name: $PROGRAM_NAME"
-        continue
-    fi
-
-    echo "Killing processes with name: $PROGRAM_NAME"
-    for PID in $PIDS; do
-        echo "Killing PID: $PID"
-        kill -9 $PID
+for SERVICE in "${SERVICE_NAMES[@]}"; do
+    echo "Stopping: $SERVICE"
+    
+    # Send SIGTERM (graceful shutdown)
+    pkill -f "python.*$SERVICE(\.py)?$" 2>/dev/null
+    
+    # Wait for graceful exit
+    for ((i=0; i<TIMEOUT; i++)); do
+        if ! pgrep -f "python.*$SERVICE(\.py)?$" >/dev/null 2>&1; then
+            echo "$SERVICE stopped gracefully"
+            break
+        fi
+        sleep 1
     done
-
-    echo "All processes with name $PROGRAM_NAME have been terminated."
+    
+    # Force kill if still running
+    if pgrep -f "python.*$SERVICE(\.py)?$" >/dev/null 2>&1; then
+        pkill -9 -f "python.*$SERVICE(\.py)?$" 2>/dev/null
+        echo "$SERVICE force stopped"
+    fi
 done
