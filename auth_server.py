@@ -11,7 +11,6 @@ from flask import Flask, request, jsonify
 from os import system as os_system_cmd
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.exceptions import InvalidKey
-from flasgger import Swagger
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -72,9 +71,6 @@ db.init_app(auth_api)
 
 # Initialize JWT manager
 jwt = JWTManager(auth_api)
-
-# Initialize Swagger
-swagger = Swagger(auth_api)
 
 # Check JWT secret key length
 # encode to utf-8 to get byte length and check if it's at least 32 bytes (256 bits)

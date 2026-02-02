@@ -1,10 +1,12 @@
 # IDRANJIA
 
 This repository provides a compact microservice-style Flask application for managing the backend of the IDRANJIA application and its related resources.  
-The IDRANJIA project is aimed at providing fire fighters, public workers and hydrants mantainers with a quick, reliable, secure, easy to use/access browser based platform to access and manage hydrant related data.  
+This project is aimed at providing fire fighters, public workers and hydrants mantainers with a quick, reliable, secure, easy to use/access browser based platform to access and manage hydrant related data.  
 Most probably the platform will also be accessible through a mobile wrapper application.
 
 ## High level architecture
+
+Services:
 
 - `api_server.py` — main HTTP API that registers blueprints, configures JWT validation and OpenAPI docs (Flasgger). It exposes application endpoints implemented in `api_blueprints/`.
   
@@ -12,7 +14,7 @@ Most probably the platform will also be accessible through a mobile wrapper appl
 
 - `log_server.py` — UDP syslog-like listener that parses incoming syslog messages, performs rate-limiting, and writes structured output to file and console.
 
-Shared components and important files
+Shared components and important files:
 
 - `models.py` — SQLAlchemy models for domain objects.  
 Each model includes a `to_dict()` helper for JSON serialization.
@@ -27,8 +29,29 @@ Each blueprint corresponds to a logical resource (hydrant, control, photo, opera
 
 ## Documentation
 
-Endpoint documentation is available through Swagger UI at `http(s)://{api_host}:{api_port}/docs/` with the relative configuration in `api_config.py` and template in `api_server.py`.
+Endpoint documentation is available through Swagger UI at 
+```xml
+http(s)://{api_host}:{api_port}/docs/
+``` 
+
+(with default configuration for development):
+
+```xml
+http://locahost:5000/docs/
+``` 
+
+with the relative configuration in `api_config.py` and template in `api_server.py`.  
 Each endpoint documentation is modifiable by editing the docstring of said function, all other documentation is avaible in the code itself or in the README files for high-level explanations.
+
+N.B: Due to constraints with Swagger the documentation for the endpoints of the auth server is hardcoded inside the variable `swagger_template` in `api_server.py`.   
+When making changes to `auth_server.py` it is strongly advised to change the values inside of `api_server.py`.   
+A more streamlined solution will be researched and implemented in the future.
+
+## Log messages handling
+
+Due to the expected very low throughput of log messages passing through the architecture it has been deemed that no log broker is necessary (indicatively, such solutions start to matter at 100-1000 logs per second).
+Instead an ad-hoc solution consisting of a dedicated interface to a small database built with sqlite3 for each microservice, this way the process of handling unsent logs is greatly simplified and, because of the transactional nature of relational databases, losing data is very unlinkely.
+To aid in management, each microservice also includes a dedicated endpoint for admin users to clear out sent logs for the sqlite3 database along with the option of programming this to happend periodically.
 
 ## Security measures
 
@@ -38,7 +61,7 @@ This project implements several security measures. Highlights below reference th
 	- Passwords are stored and validated using PBKDF2-HMAC-SHA256 (`PBKDF2HMAC`) with 100k iterations and a 32-byte length. The verification function in `auth_server.py`:
 		- Expects a `salt:hash` base64-encoded format.
 		- Validates base64 decoding and handles malformed inputs gracefully.
-		- Uses `kdf.verify(...)` to avoid timing [side-channel attacks](https://en.wikipedia.org/wiki/Side-channel_attack) that could arise from naive comparisons. (Naive byte-by-byte check returns as soon a mismatch is found, because of this attacker can measure timing differences to recover secrets. To resolve this a constant-time comparison method is needed)
+		- Uses `kdf.verify(...)` to avoid timing [side-channel attacks](https://en.wikipedia.org/wiki/Side-channel_attack) that could arise from naive comparisons. (naive byte-by-byte check returns as soon a mismatch is found, allowing an attacker to measure timing differences and potentially recover secrets. To resolve this a constant-time comparison method is needed)
 
 - JWT authentication
 	- `flask_jwt_extended` is used for issuing and validating tokens.
@@ -48,7 +71,7 @@ This project implements several security measures. Highlights below reference th
 
 - Input validation and SQL-injection scanning
 	- A precompiled regex named `SQL_PATTERN` in `config.py` is used to detect common SQL keywords and suspicious characters. Functions like `is_input_safe()` (in `auth_server.py`) and blueprint-level checks validate incoming JSON keys and values.
-	- Note: This scanning is a helpful heuristic but not a replacement for parameterized queries. All DB access should use SQLAlchemy ORM or parameterized queries (SQLAlchemy handles that by default).
+	- N.B: This scanning is a helpful heuristic but not a replacement for parameterized queries. All DB access should use SQLAlchemy ORM or parameterized queries (SQLAlchemy handles that by default).
 	- To avoid ReDos a maximum length for a scannable string and maximum recursion depth (for scanning complex data types that may contain other contain complex data types and so on) are defined (configurable via `.env` file).
 
 - Rate limiting
@@ -63,7 +86,7 @@ This project implements several security measures. Highlights below reference th
 - Transport security (TLS)
 	- `api_server.py` and `auth_server.py` support SSL if certificate and key paths are provided in `config.py` (`*_SSL_CERT`, `*_SSL_KEY`, and `*_SSL` flags).
 
-## Configuration and secrets (what to review before production)
+## Configuration and secrets
 
 - To streamline the process of separating the services into different machines, a config file has been created for each server. In a testing/development environment these virtually function as a single monolithic configuration file.
 Unavoidably, there is some overlap between some of the configuration files, these always have to match the other configuration/settings.
@@ -80,28 +103,6 @@ Recommended environment overrides (examples):
 - `JWT_SECRET_KEY` — use a securely generated key (e.g., 32+ bytes from `openssl rand -base64 48`).
 - `SQLALCHEMY_DATABASE_URI` — use a production DB URI rather than the local defaults.
 
-# Rough road map to move into production
-
-- Review test coverage.
-- Remove any sensitive/weak settings that may affect security.
-- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files). Here's how to separate each server:
-    - The log server consists of `log_server.py`, `log_config.py` and the relevant `.env` file.
-    - The auth server consists of `auth_server.py`, `auth_config.py`, `models.py` (only needs SQLAlchemy instance and User resource abstraction but, for simplicity, the file can just be copied the same way that it is for the API server) and the relevant `.env` file.
-    - The API server consists of `api_server.py`, `api_config.py`, `api_blueprints` folder, `models.py` and the relevant `.env` file.
-- Using admin utilities (still being worked on) test that all the security measures function properly.
-
-## Troubleshooting pointers
-
-- Common JWT issue: mismatched `JWT_SECRET_KEY` or `JWT_ALGORITHM` between `auth_server.py` and `api_server.py`.  
-- Authentication failures: verify the stored password format and PBKDF2 parameters (iterations, hash length).  
-- Logging/Rate-limit: check `config.py` rate limit values and the log server's delayed queue size if messages are dropped.  
-- Unable to load configuration: The suffix .example has not been removed from the .env file.  
-- Unable to execute quick start/kill scripts to run the code on Windows based machines: Execute this command in the powershell terminal `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted`, this will allow script execution only for the current terminal session and not affect any other sessions or system-wide settings.
-- Unable to execuite quick start/kill scripts to run the code on Linux based machines: Ensure the scripts have the proper permission (i.e you have properly used the `chmod` command).
-- Cannot connect to database: Often, especially with deployment and testing configurations, the name (or other configurations) of the database is not fully clear while using only CLI tools. Aiding yourself with a GUI tool like pgAdmin4 check that the target database configurations matches the .env file.  Note: it is not recommend to `postgres` database, instead just create a new one and migrate the data if, by mistake, you inserted the data into `postgres` database.
-- Cannot launch services with SSL disabled: Match sure all the configuration values are coherent with each other and that any empty values in the env file use "", because without them the parses will interpret the comment as the value.
-- Terminal looks cramped and arduos to read while testing/developing: Because of the testing/developing environment most element of the architecture will run on the same machine, naturally, as a result, all the output messages will mix together and become hard to read. Because of Powershell text formatting, the issue overall being minor and the code required to fix it not worth implementing no solution is provided for this problem.
-
 ## Security hardening checklist (recommended before production)
 
 1. Remove any hard-coded secret or sensitive settings and put them inside of a properly managed and kept `.env` file.
@@ -109,3 +110,24 @@ Recommended environment overrides (examples):
 3. Use real TLS certificates in `*_SSL_CERT` / `*_SSL_KEY` (`*_SSL` flags will automatically configure wether certificate and key are provided or not).
 4. Use a managed database or secure DB instance with restricted network access and strong credentials.
 5. Disable debug modes and remove overly permissive token locations (prefer headers over query string).
+
+# Rough road map to move into production
+
+- Review test coverage.
+- Remove any sensitive/weak settings that may affect security (check paragraph above).
+- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files). Here's how to separate each server:
+    - The log server consists of `log_server.py`, `log_config.py` and the relevant `.env` file.
+    - The auth server consists of `auth_server.py`, `auth_config.py`, `models.py` (only needs SQLAlchemy instance and User resource abstraction but, for simplicity, the file can just be copied the same way that it is for the API server) and the relevant `.env` file.
+    - The API server consists of `api_server.py`, `api_config.py`, `api_blueprints` folder, `models.py` and the relevant `.env` file.
+- Use admin utilities (still being worked on) test that all the security measures function properly.
+
+## Troubleshooting pointers
+
+- **JWT configuration mismatch**: mismatched `JWT_SECRET_KEY` or `JWT_ALGORITHM` between `auth_server.py` and `api_server.py`.  
+- **User authentication failures**: verify the stored password format and PBKDF2 parameters (iterations, hash length).  
+- **Log messages or requests are dropped**: check `config.py` rate limit values and the log server's delayed queue size if messages are dropped.  
+- **Unable to load configuration (No .env file found)**: The suffix .example has not been removed from the .env file.  
+- **Unable to execute quick start/kill scripts to run the code on Windows based machines**: Execute this command in the powershell terminal `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted`, this will allow script execution only for the current terminal session and not affect any other sessions or system-wide settings.
+- **Unable to execuite quick start/kill scripts to run the code on Linux based machines**: Ensure the scripts have the proper permission (i.e you have properly used the `chmod` command).
+- **Cannot connect to database**: Often, especially with deployment and testing configurations, the name (or other configurations) of the database is not fully clear while using only CLI tools. Aiding yourself with a GUI tool like pgAdmin4 check that the target database configurations matches the .env file.  Note: it is not recommend to `postgres` database, instead just create a new one and migrate the data if, by mistake, you inserted the data into `postgres` database.
+- **Cannot launch services with SSL disabled**: Match sure all the configuration values are coherent with each other and that any empty values in the env file use "", because without them the parses will interpret the comment as the value.

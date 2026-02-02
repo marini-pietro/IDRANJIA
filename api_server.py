@@ -72,7 +72,7 @@ main_api.config.update(
     SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS, # Disable track modifications
 )
 
-# Add OpenAPI specs for auth_server endpoints to the Swagger template
+# Swagger template with hardcoded auth endpoints
 swagger_template = {
     "openapi": "3.0.2",
     "info": {
