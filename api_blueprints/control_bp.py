@@ -36,11 +36,13 @@ api = Api(control_bp)
 # Define schema
 class ControlSchema(ma.Schema):
     """
-    Schema for validating and serializing Control data.  
+    Schema for validating and serializing Control data.
     This schema defines the fields required for a control record.
     """
 
-    id_controllo = fields.Integer(dump_only=True, validate=lambda x: x > 0) # dump-only means read-only
+    id_controllo = fields.Integer(
+        dump_only=True, validate=lambda x: x > 0
+    )  # dump-only means read-only
     tipo = fields.String(required=True)
     esito = fields.Boolean(required=True)
     data = fields.Date(required=True)
@@ -53,9 +55,9 @@ control_schema = ControlSchema()
 
 class ControlResource(Resource):
     """
-    Resource for managing control records.  
-    This class provides methods to handle HTTP requests for control records.  
-    It supports GET, POST, PATCH, DELETE, and OPTIONS methods.  
+    Resource for managing control records.
+    This class provides methods to handle HTTP requests for control records.
+    It supports GET, POST, PATCH, DELETE, and OPTIONS methods.
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}/<int:id_>"]
@@ -133,7 +135,12 @@ class ControlResource(Resource):
             message=f"User {identity} fetched control with id {id_}",
             level="INFO",
             source="control_fetch",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "control_id": id_,
+            },
         )
 
         # Return the control as a JSON response
@@ -201,7 +208,9 @@ class ControlResource(Resource):
         """
         try:
             # Load input
-            data = control_schema.load(request.get_json(), partial=True) # partial=true to allow partial updates
+            data = control_schema.load(
+                request.get_json(), partial=True
+            )  # partial=true to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -253,7 +262,12 @@ class ControlResource(Resource):
             message=f"User {identity} updated control with id {id_}",
             level="INFO",
             source="control_update",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "control_id": id_,
+            },
         )
 
         # Return the response
@@ -329,7 +343,12 @@ class ControlResource(Resource):
             message=f"User {identity} deleted control with id {id_}",
             level="INFO",
             source="control_deletion",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "control_id": id_,
+            },
         )
 
         # Return the response
@@ -359,9 +378,9 @@ class ControlResource(Resource):
 
 class ControlPostResource(Resource):
     """
-    Resource for creating new control records.  
-    This class provides a method to handle POST requests for control records.  
-    Separated from ControlResource because it is the easiest way to force different endpoints paths.  
+    Resource for creating new control records.
+    This class provides a method to handle POST requests for control records.
+    Separated from ControlResource because it is the easiest way to force different endpoints paths.
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]
@@ -458,7 +477,12 @@ class ControlPostResource(Resource):
             message=f"User {identity} created control with id_ {new_control.id_controllo}",
             level="INFO",
             source="control_creation",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": new_control.id_controllo}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "control_id": new_control.id_controllo,
+            },
         )
 
         # Return the response

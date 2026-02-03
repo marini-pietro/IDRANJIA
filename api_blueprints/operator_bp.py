@@ -36,17 +36,21 @@ api = Api(operator_bp)
 
 # Define schemas and validation function
 def safe_string(value):
-  if not isinstance(value, str):
-    raise ValidationError("Must be a string.")
-  if ("<" in value or ">" in value or
-    re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)):
-    raise ValidationError("Invalid characters in string.")
-  return value
+    if not isinstance(value, str):
+        raise ValidationError("Must be a string.")
+    if (
+        "<" in value
+        or ">" in value
+        or re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)
+    ):
+        raise ValidationError("Invalid characters in string.")
+    return value
+
 
 class OperatorSchema(ma.Schema):
-  CF = fields.String(required=True)
-  nome = fields.String(required=True, validate=safe_string)
-  cognome = fields.String(required=True, validate=safe_string)
+    CF = fields.String(required=True)
+    nome = fields.String(required=True, validate=safe_string)
+    cognome = fields.String(required=True, validate=safe_string)
 
 
 # Instantiate the schema
@@ -55,7 +59,7 @@ operator_schema = OperatorSchema()
 
 class OperatorResource(Resource):
     """
-    Resource for managing operators.  
+    Resource for managing operators.
     This class provides methods to get, update, and delete operator records by their CF.
     """
 
@@ -125,7 +129,12 @@ class OperatorResource(Resource):
             message=f"User {identity} fetched operator with cf {CF}",
             level="INFO",
             source="operator_fetch",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "operator_cf": CF,
+            },
         )
 
         # Return the operator as a JSON response
@@ -188,9 +197,11 @@ class OperatorResource(Resource):
             description: Operator not found
         """
 
-		# Load input data
+        # Load input data
         try:
-            data = operator_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
+            data = operator_schema.load(
+                request.get_json(), partial=True
+            )  # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -217,7 +228,12 @@ class OperatorResource(Resource):
             message=f"User {identity} updated operator with cf {CF}",
             level="INFO",
             source="operator_update",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "operator_cf": CF,
+            },
         )
 
         # Update only provided fields
@@ -298,13 +314,18 @@ class OperatorResource(Resource):
             message=f"User {identity} deleted operator with cf {CF}",
             level="INFO",
             source="operator_deletion",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "operator_cf": CF,
+            },
         )
 
         # Delete the operator
         db.session.delete(operator)
-        
-		# Commit the changes to the database
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Return the response
@@ -389,7 +410,7 @@ class OperatorPostResource(Resource):
                 message={"error": err.messages},
                 status_code=STATUS_CODES["bad_request"],
             )
-        
+
         cf = data["CF"]
         name = data["nome"]
         surname = data["cognome"]
@@ -407,8 +428,8 @@ class OperatorPostResource(Resource):
 
         # Add the new operator to the database
         db.session.add(new_operator)
-        
-		    # Commit the changes to the database
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -416,7 +437,12 @@ class OperatorPostResource(Resource):
             message=f"User {identity} created operator with id {new_operator.id}",
             level="INFO",
             source="operator_creation",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_id": new_operator.id}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "operator_id": new_operator.id,
+            },
         )
 
         # Return the new operator as a JSON response

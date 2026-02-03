@@ -50,7 +50,7 @@ from auth_config import (
     SQLALCHEMY_TRACK_MODIFICATIONS,
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
-    LOG_DB_PATH,
+    LOG_INTERFACE_DB_FILENAME,
     LOG_INTERFACE_MAX_RETRIES,
     LOG_INTERFACE_RETRY_DELAY,
 )
@@ -60,16 +60,16 @@ auth_api = Flask(__name__)
 
 # Update configuration settings for the Flask app
 auth_api.config.update(
-    JWT_SECRET_KEY=JWT_SECRET_KEY, # Same secret key as the auth microservice
-    JWT_ALGORITHM=JWT_ALGORITHM,   # Same algorithm as the auth microservice
-    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION, # Where to look for tokens
-    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME, # Custom query string name
-    JWT_JSON_KEY=JWT_JSON_KEY,     # Custom JSON key for access tokens
-    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY, # Custom JSON key for refresh tokens
-    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES, # Refresh token valid duration
-    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,     # Access token valid duration
-    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI, # Database connection URI
-    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS, # Disable track modifications
+    JWT_SECRET_KEY=JWT_SECRET_KEY,  # Same secret key as the auth microservice
+    JWT_ALGORITHM=JWT_ALGORITHM,  # Same algorithm as the auth microservice
+    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION,  # Where to look for tokens
+    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME,  # Custom query string name
+    JWT_JSON_KEY=JWT_JSON_KEY,  # Custom JSON key for access tokens
+    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY,  # Custom JSON key for refresh tokens
+    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES,  # Refresh token valid duration
+    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,  # Access token valid duration
+    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI,  # Database connection URI
+    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS,  # Disable track modifications
 )
 
 # Initialize database (ORM abstraction layer)
@@ -83,17 +83,19 @@ jwt = JWTManager(auth_api)
 log_interface = create_interface(
     syslog_host=LOG_SERVER_HOST,
     syslog_port=LOG_SERVER_PORT,
-    db_path=LOG_DB_PATH,
+    db_filename=LOG_INTERFACE_DB_FILENAME,
     service_name=AUTH_SERVER_IDENTIFIER,
     max_retries=LOG_INTERFACE_MAX_RETRIES,
-    retry_delay=LOG_INTERFACE_RETRY_DELAY
+    retry_delay=LOG_INTERFACE_RETRY_DELAY,
 )
 
-print("Logging interface created successfully.\n")
-log_interface.start() # Start the background thread for the logging interface
-print("Logging interface background thread started successfully.\n")
+print("Logging interface created successfully. Starting background thread...")
+log_interface.start()  # Start the background thread for the logging interface
+print("Logging interface background thread started successfully.")
 
-log = log_interface.log # Get the log method from the interface for easy use in the auth server code
+log = (
+    log_interface.log
+)  # Get the log method from the interface for easy use in the auth server code
 
 # Check JWT secret key length
 # encode to utf-8 to get byte length and check if it's at least 32 bytes (256 bits)
@@ -102,62 +104,62 @@ if len(JWT_SECRET_KEY.encode("utf-8")) < 32:
 
 
 def verify_password(stored_password: str, provided_password: str) -> bool:
-  """Verify a password against a stored PBKDF2 hash with more specific exception handling."""
+    """Verify a password against a stored PBKDF2 hash with more specific exception handling."""
 
-  try:
-    # Split the stored password into salt and hash components
-    salt_b64, hash_b64 = stored_password.split(":") # Expecting "salt:hash" format
-  except ValueError:
-    # stored_password doesn't have the expected "salt:hash" format
-    log(
-        message="Stored password format invalid",
-        level="WARNING",
-        source="password_validation",
-        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
-    )
-    return False
+    try:
+        # Split the stored password into salt and hash components
+        salt_b64, hash_b64 = stored_password.split(":")  # Expecting "salt:hash" format
+    except ValueError:
+        # stored_password doesn't have the expected "salt:hash" format
+        log(
+            message="Stored password format invalid",
+            level="WARNING",
+            source="password_validation",
+            sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
+        )
+        return False
 
-  try:
-    # Decode the base64-encoded salt and hash
-    salt = base64.urlsafe_b64decode(salt_b64)
-    hash_bytes = base64.urlsafe_b64decode(hash_b64)
-  except (BinasciiError, ValueError):
-    # base64 decoding failed (malformed salt or hash)
-    log(
-        message="Base64 decoding failed for stored password components",
-        level="WARNING",
-        source="password_decoding",
-        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
-    )
-    return False
+    try:
+        # Decode the base64-encoded salt and hash
+        salt = base64.urlsafe_b64decode(salt_b64)
+        hash_bytes = base64.urlsafe_b64decode(hash_b64)
+    except (BinasciiError, ValueError):
+        # base64 decoding failed (malformed salt or hash)
+        log(
+            message="Base64 decoding failed for stored password components",
+            level="WARNING",
+            source="password_decoding",
+            sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
+        )
+        return False
 
-  try:
-    # Set up the PBKDF2 HMAC verifier
-    # verifier has to be set up with the same parameters used during hashing
-    kdf = PBKDF2HMAC(
-      algorithm=PBKDF2HMAC_SETTINGS["algorithm"],
-      length=PBKDF2HMAC_SETTINGS["length"],
-      salt=salt,
-      iterations=PBKDF2HMAC_SETTINGS["iterations"],
-    )
+    try:
+        # Set up the PBKDF2 HMAC verifier
+        # verifier has to be set up with the same parameters used during hashing
+        kdf = PBKDF2HMAC(
+            algorithm=PBKDF2HMAC_SETTINGS["algorithm"],
+            length=PBKDF2HMAC_SETTINGS["length"],
+            salt=salt,
+            iterations=PBKDF2HMAC_SETTINGS["iterations"],
+        )
 
-    # Verify the provided password
-    kdf.verify(provided_password.encode("utf-8"), hash_bytes)
+        # Verify the provided password
+        kdf.verify(provided_password.encode("utf-8"), hash_bytes)
 
-    # If no exception was raised, the password is correct
-    return True
-  except InvalidKey:
-    # password verification failed (wrong password)
-    return False
-  except Exception as exc:
-    # Catch-all for unexpected errors; log for troubleshooting
-    log(
-        message=f"Unexpected error during password verification: {exc}",
-        level="ERROR",
-        source="password_verification",
-        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
-    )
-    return False
+        # If no exception was raised, the password is correct
+        return True
+    except InvalidKey:
+        # password verification failed (wrong password)
+        return False
+    except Exception as exc:
+        # Catch-all for unexpected errors; log for troubleshooting
+        log(
+            message=f"Unexpected error during password verification: {exc}",
+            level="ERROR",
+            source="password_verification",
+            sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
+        )
+        return False
 
 
 def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
@@ -169,13 +171,13 @@ def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
     # Check for SQL patterns in strings
     if isinstance(data, str):
         return not SQL_PATTERN.search(data)
-    
+
     # Check for SQL patterns in lists of strings
     if isinstance(data, list):
         return all(
             isinstance(item, str) and not SQL_PATTERN.search(item) for item in data
         )
-    
+
     # Check for SQL patterns in dictionary keys and values
     if isinstance(data, dict):
         return all(
@@ -184,7 +186,7 @@ def is_input_safe(data: Union[str, List[str], Dict[Any, Any]]) -> bool:
             and not SQL_PATTERN.search(value)
             for key, value in data.items()
         )
-    
+
     # If data is of an unexpected type, raise TypeError
     raise TypeError(
         "Input must be a string, list of strings, or dictionary with string keys and values."
@@ -252,11 +254,13 @@ def login():
             ),
             STATUS_CODES["bad_request"],
         )
-    
+
     # Parse and validate JSON body
     try:
-        data = request.get_json(silent=False) # silent=False to raise error on invalid JSON
-        if not data: # Check for empty JSON object
+        data = request.get_json(
+            silent=False
+        )  # silent=False to raise error on invalid JSON
+        if not data:  # Check for empty JSON object
             return (
                 jsonify({"error": "Request body must not be empty"}),
                 STATUS_CODES["bad_request"],
@@ -287,17 +291,19 @@ def login():
     # Extract email and password from JSON body
     email = data.get("email")
     password = data.get("password")
-    if not email or not password: # Check for missing fields
+    if not email or not password:  # Check for missing fields
         return (
             jsonify({"error": "Missing email or password"}),
             STATUS_CODES["bad_request"],
         )
 
-    user = User.query.filter_by(email=email).first() # Fetch user from database
-    if user and verify_password(user.password, password): # If the user exists and password is correct
-        identity = user.email # Use email as identity
-        additional_claims = {"role": user.ruolo} # Add user role as custom claim
-        
+    user = User.query.filter_by(email=email).first()  # Fetch user from database
+    if user and verify_password(
+        user.password, password
+    ):  # If the user exists and password is correct
+        identity = user.email  # Use email as identity
+        additional_claims = {"role": user.ruolo}  # Add user role as custom claim
+
         # Create access and refresh tokens
         access_token = create_access_token(
             identity=identity, additional_claims=additional_claims
@@ -311,7 +317,13 @@ def login():
             message=f"User {email} logged in",
             level="INFO",
             source="user_login",
-            tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "endpoint": request.path, "method": request.method, "email": email}
+            sd_tags={
+                "host": AUTH_SERVER_HOST,
+                "port": AUTH_SERVER_PORT,
+                "endpoint": request.path,
+                "method": request.method,
+                "email": email,
+            },
         )
 
         # Return the tokens
@@ -319,8 +331,8 @@ def login():
             jsonify({"access_token": access_token, "refresh_token": refresh_token}),
             STATUS_CODES["ok"],
         )
-    else: # Invalid credentials (user not found or wrong password)
-       return jsonify({"error": "invalid credentials"}), STATUS_CODES["unauthorized"]
+    else:  # Invalid credentials (user not found or wrong password)
+        return jsonify({"error": "invalid credentials"}), STATUS_CODES["unauthorized"]
 
 
 @auth_api.route(f"/auth/{AUTH_API_VERSION}/validate", methods=["POST"])
@@ -350,11 +362,11 @@ def validate_token():
       401:
         description: Invalid or expired token
     """
-    
+
     # Get identity and custom claims from the JWT
     identity = get_jwt_identity()
     user_role = get_jwt().get("role")
-    
+
     return jsonify({"identity": identity, "role": user_role}), STATUS_CODES["ok"]
 
 
@@ -384,12 +396,12 @@ def refresh():
     """
     # Get the identity from the refresh token
     identity = get_jwt_identity()
-    
+
     # Preserve custom claims from the refresh token (e.g. role) when issuing a new access token
     user_role = get_jwt().get("role")
     additional_claims = {"role": user_role} if user_role is not None else None
-    
-	# create_access_token expects additional_claims to be a dict or omitted
+
+    # create_access_token expects additional_claims to be a dict or omitted
     if additional_claims:
         new_access_token = create_access_token(
             identity=identity, additional_claims=additional_claims
@@ -402,9 +414,15 @@ def refresh():
         message=f"Access token refreshed for identity {identity}",
         level="INFO",
         source="token_refresh",
-        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "endpoint": request.path, "method": request.method, "identity": identity}
+        sd_tags={
+            "host": AUTH_SERVER_HOST,
+            "port": AUTH_SERVER_PORT,
+            "endpoint": request.path,
+            "method": request.method,
+            "identity": identity,
+        },
     )
-    
+
     return jsonify({"access_token": new_access_token}), STATUS_CODES["ok"]
 
 
@@ -416,7 +434,7 @@ def health_check():
     tags:
       - Health
     summary: Health check endpoint
-    description: Returns a simple status message to indicate the server is healthy.  
+    description: Returns a simple status message to indicate the server is healthy.
     operationId: auth_health_check
     responses:
       200:
@@ -430,14 +448,14 @@ def health_check():
                   type: string
                   example: ok
     """
-    
+
     return jsonify({"status": "ok"}), STATUS_CODES["ok"]
 
 
 if __name__ == "__main__":
     # Run the Flask authentication server
-    
-	# Use Flask's built-in server in debug mode for development (i.e. AUTH_SERVER_DEBUG_MODE=True)
+
+    # Use Flask's built-in server in debug mode for development (i.e. AUTH_SERVER_DEBUG_MODE=True)
     if AUTH_SERVER_DEBUG_MODE is True:
         try:
             # Log server start event
@@ -445,65 +463,71 @@ if __name__ == "__main__":
                 message=f"Auth server starting with Flask built-in server with debug mode set to {AUTH_SERVER_DEBUG_MODE}",
                 level="INFO",
                 source="auth_server_startup",
-                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
+                sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
-            
-			      # Start the server with Flask's built-in server
+
+            # Start the server with Flask's built-in server
             auth_api.run(
                 host=AUTH_SERVER_HOST,
                 port=AUTH_SERVER_PORT,
                 debug=AUTH_SERVER_DEBUG_MODE,
                 ssl_context=(
-                    (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY) if AUTH_SERVER_SSL else None
+                    (AUTH_SERVER_SSL_CERT, AUTH_SERVER_SSL_KEY)
+                    if AUTH_SERVER_SSL
+                    else None
                 ),
             )
-            
+
             # Log server stop event only if run() returns (which is rare, usually only on shutdown)
             log(
                 message="Auth server stopped (Flask run() exited)",
                 level="INFO",
                 source="auth_server_shutdown",
-                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
+                sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
         except Exception as ex:
             log(
                 message=f"Exception while starting auth server with Flask: {ex}",
                 level="ERROR",
                 source="auth_server_startup",
-                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
+                sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
 
-	# Use waitress-serve in production (i.e. AUTH_SERVER_DEBUG_MODE=False)
+    # Use waitress-serve in production (i.e. AUTH_SERVER_DEBUG_MODE=False)
     else:
-      try:
-          # Log server start event
-          log(
-              message="Auth server starting with waitress-serve",
-              level="INFO",
-              source="auth_server_startup",
-              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
-          )
+        try:
+            # Log server start event
+            log(
+                message="Auth server starting with waitress-serve",
+                level="INFO",
+                source="auth_server_startup",
+                sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
+            )
 
-		      # Start the server with waitress-serve            
-          exit_code = os_system_cmd(
-              f"waitress-serve "
-              f"--host={AUTH_SERVER_HOST} "
-              f"--port={AUTH_SERVER_PORT} "
-              f"{'--url-scheme=https' if AUTH_SERVER_SSL else ''} "
-              f"auth_server:auth_api"
-          )
-          
-		      # Log shutdown event
-          log(
-              message=f"Auth server started with waitress shutdown with code {exit_code}",
-              level="INFO",
-              source="auth_server_shutdown",
-              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "exit_code": exit_code}
-          )
-      except Exception as ex:
-          log(
-              message=f"Exception while starting auth server with waitress-serve: {ex}",
-              level="ERROR",
-              source="auth_server_startup",
-              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
-          )
+            # Start the server with waitress-serve
+            exit_code = os_system_cmd(
+                f"waitress-serve "
+                f"--host={AUTH_SERVER_HOST} "
+                f"--port={AUTH_SERVER_PORT} "
+                f"{'--url-scheme=https' if AUTH_SERVER_SSL else ''} "
+                f"auth_server:auth_api"
+            )
+
+            # Log shutdown event
+            log(
+                message=f"Auth server started with waitress shutdown with code {exit_code}",
+                level="INFO",
+                source="auth_server_shutdown",
+                sd_tags={
+                    "host": AUTH_SERVER_HOST,
+                    "port": AUTH_SERVER_PORT,
+                    "exit_code": exit_code,
+                },
+            )
+        except Exception as ex:
+            log(
+                message=f"Exception while starting auth server with waitress-serve: {ex}",
+                level="ERROR",
+                source="auth_server_startup",
+                sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
+            )

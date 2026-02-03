@@ -1,4 +1,4 @@
-# Contributing to IDRANJIA
+# Contributing to IDRANTI-SICURI-BE
 
 Thank you for considering contributing. This file contains high-level contribution guidelines and expectations.  
 Please note that this backend is intended to be used in conjunction with a separate [frontend repository](https://github.com/campionl/idranti-sicuri_frontend); while the backend can run and serve data independently, it is designed to be coupled with the project's frontend implementation.  

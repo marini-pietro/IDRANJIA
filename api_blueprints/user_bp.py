@@ -49,20 +49,24 @@ api = Api(user_bp)
 
 # Define schemas and validation function
 def safe_string(value):
-  if not isinstance(value, str):
-    raise ValidationError("Must be a string.")
-  if ("<" in value or ">" in value or
-    re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)):
-    raise ValidationError("Invalid characters in string.")
-  return value
+    if not isinstance(value, str):
+        raise ValidationError("Must be a string.")
+    if (
+        "<" in value
+        or ">" in value
+        or re.search(r"javascript:|[\x00-\x1F\x7F]", value, re.IGNORECASE)
+    ):
+        raise ValidationError("Invalid characters in string.")
+    return value
+
 
 class UserSchema(ma.Schema):
-  email = fields.Email(required=True)
-  comune = fields.String(required=True)
-  nome = fields.String(required=True, validate=safe_string)
-  cognome = fields.String(required=True, validate=safe_string)
-  admin = fields.Boolean(required=True)
-  password = fields.String(required=True)
+    email = fields.Email(required=True)
+    comune = fields.String(required=True)
+    nome = fields.String(required=True, validate=safe_string)
+    cognome = fields.String(required=True, validate=safe_string)
+    admin = fields.Boolean(required=True)
+    password = fields.String(required=True)
 
 
 # Create an instance of the schema
@@ -70,7 +74,7 @@ user_schema = UserSchema()
 
 
 def hash_password(password: str) -> str:
-    
+
     # Generate a random salt
     salt = os.urandom(16)
 
@@ -157,7 +161,12 @@ class UserResource(Resource):
             message=f"User {identity} retrieved user {email} data",
             level="INFO",
             source="user_retrieval",
-            tags={"endpoint": request.path, "method": request.method, "requester": identity, "target_user": email}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "requester": identity,
+                "target_user": email,
+            },
         )
 
         # Return user data as JSON response
@@ -229,10 +238,12 @@ class UserResource(Resource):
           404:
             description: User not found
         """
-        
+
         # Load input data
         try:
-            data = user_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
+            data = user_schema.load(
+                request.get_json(), partial=True
+            )  # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -241,7 +252,7 @@ class UserResource(Resource):
 
         # Check if the user exists in the database using ORM
         user = User.query.filter_by(email=email).first()
-        if not user: # If user is not found return an error message
+        if not user:  # If user is not found return an error message
             return create_response(
                 message={"error": "user not found"},
                 status_code=STATUS_CODES["not_found"],
@@ -265,7 +276,12 @@ class UserResource(Resource):
             message=f"User {identity} updated user {email}",
             level="INFO",
             source="user_update",
-            tags={"endpoint": request.path, "method": request.method, "updater": identity, "updated_user": email}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "updater": identity,
+                "updated_user": email,
+            },
         )
 
         # Return a success response
@@ -308,9 +324,11 @@ class UserResource(Resource):
             description: User not found
         """
 
-        user = User.query.filter_by(email=email).first() # Check if the user exists in the database
+        user = User.query.filter_by(
+            email=email
+        ).first()  # Check if the user exists in the database
 
-        if user is None: # If user is not found return an error message
+        if user is None:  # If user is not found return an error message
             return create_response(
                 message={"error": "user not found with provided email"},
                 status_code=STATUS_CODES["not_found"],
@@ -327,7 +345,12 @@ class UserResource(Resource):
             message=f"User {email} deleted user {identity}",
             level="INFO",
             source="user_deletion",
-            tags={"endpoint": request.path, "method": request.method, "deleter": email, "deleted_user": identity}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "deleter": email,
+                "deleted_user": identity,
+            },
         )
 
         # Return a success response
@@ -356,7 +379,7 @@ class UserResource(Resource):
 
 class UserPostResource(Resource):
     """
-    UserResource post resource for creating new users.  
+    UserResource post resource for creating new users.
     This class handles the following HTTP methods:
     - POST: Create a new user
     - OPTIONS: Get allowed HTTP methods for this endpoint
@@ -419,7 +442,7 @@ class UserPostResource(Resource):
           409:
             description: User already exists
         """
-        
+
         # Load input data
         try:
             data = user_schema.load(request.get_json())
@@ -468,7 +491,12 @@ class UserPostResource(Resource):
             message=f"User {identity} created user {email}",
             level="INFO",
             source="user_creation",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "email": email}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "email": email,
+            },
         )
 
         # Return a success response
@@ -502,8 +530,10 @@ class UserLoginSchema(ma.Schema):
     """
     Schema for validating user login data.
     """
+
     email = fields.Email(required=True)
     password = fields.String(required=True)
+
 
 # Create an instance of the schema
 user_login_schema = UserLoginSchema()
@@ -511,7 +541,7 @@ user_login_schema = UserLoginSchema()
 
 class UserLogin(Resource):
     """
-    UserResource login resource for managing user authentication.  
+    UserResource login resource for managing user authentication.
     This class handles the following HTTP methods:
     - POST: UserResource login
     - OPTIONS: Get allowed HTTP methods for this endpoint
@@ -600,7 +630,7 @@ class UserLogin(Resource):
                 message=f"Authentication service unavailable: {str(ex)}",
                 level="ERROR",
                 source="auth_service",
-                tags={"endpoint": request.path, "method": request.method}
+                sd_tags={"endpoint": request.path, "method": request.method},
             )
 
             # Return error response
@@ -610,22 +640,24 @@ class UserLogin(Resource):
             )
 
         # Handle response from the authentication service
-        if (
-            response.status_code == STATUS_CODES["ok"]
-        ): 
+        if response.status_code == STATUS_CODES["ok"]:
             # If the login is successful, send the token back to the user
             # Logging login is already handled by auth server so just return the response
             return create_response(
                 message=response.json(), status_code=STATUS_CODES["ok"]
             )
 
-        if response.status_code == STATUS_CODES["unauthorized"]: # Invalid credentials
+        if response.status_code == STATUS_CODES["unauthorized"]:  # Invalid credentials
             # Log the failed login attempt
             log(
                 message=f"Failed login attempt for email: {email}",
                 level="WARNING",
                 source="user_login",
-                tags={"endpoint": request.path, "method": request.method, "email": email}
+                sd_tags={
+                    "endpoint": request.path,
+                    "method": request.method,
+                    "email": email,
+                },
             )
 
             # Return unauthorized response
@@ -634,13 +666,17 @@ class UserLogin(Resource):
                 status_code=STATUS_CODES["unauthorized"],
             )
 
-        elif response.status_code == STATUS_CODES["bad_request"]: # Bad request
+        elif response.status_code == STATUS_CODES["bad_request"]:  # Bad request
             # Log the bad request
             log(
                 message=f"Bad request during login for email: {email}",
                 level="ERROR",
                 source="user_login",
-                tags={"endpoint": request.path, "method": request.method, "email": email}
+                sd_tags={
+                    "endpoint": request.path,
+                    "method": request.method,
+                    "email": email,
+                },
             )
 
             # Return bad request response
@@ -649,13 +685,19 @@ class UserLogin(Resource):
                 status_code=STATUS_CODES["bad_request"],
             )
 
-        elif response.status_code == STATUS_CODES["internal_error"]: # Internal server error
+        elif (
+            response.status_code == STATUS_CODES["internal_error"]
+        ):  # Internal server error
             # Log the internal error
             log(
                 message=f"Internal error during login for email: {email}",
                 level="ERROR",
                 source="user_login",
-                tags={"endpoint": request.path, "method": request.method, "email": email}
+                sd_tags={
+                    "endpoint": request.path,
+                    "method": request.method,
+                    "email": email,
+                },
             )
 
             # Return internal error response
@@ -670,7 +712,12 @@ class UserLogin(Resource):
                 message=f"Unexpected error during login for email: {email} with status code: {response.status_code}",
                 level="ERROR",
                 source="user_login",
-                tags={"endpoint": request.path, "method": request.method, "email": email, "status_code": response.status_code}
+                sd_tags={
+                    "endpoint": request.path,
+                    "method": request.method,
+                    "email": email,
+                    "status_code": response.status_code,
+                },
             )
 
             # Return generic internal error response

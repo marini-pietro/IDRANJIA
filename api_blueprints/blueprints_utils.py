@@ -37,7 +37,7 @@ from api_config import (
     URL_PREFIX,
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
-    LOG_DB_PATH,
+    LOG_INTERFACE_DB_FILENAME,
     LOG_INTERFACE_MAX_RETRIES,
     LOG_INTERFACE_RETRY_DELAY,
     API_SERVER_IDENTIFIER,
@@ -48,17 +48,19 @@ from api_config import (
 log_interface = create_interface(
     syslog_host=LOG_SERVER_HOST,
     syslog_port=LOG_SERVER_PORT,
-    db_path=LOG_DB_PATH,
+    db_filename=LOG_INTERFACE_DB_FILENAME,
     service_name=API_SERVER_IDENTIFIER,
     max_retries=LOG_INTERFACE_MAX_RETRIES,
-    retry_delay=LOG_INTERFACE_RETRY_DELAY
+    retry_delay=LOG_INTERFACE_RETRY_DELAY,
 )
 
-print("Logging interface created successfully.\n")
+print("Logging interface created successfully. Starting background thread...")
 log_interface.start()  # Start the background thread for the logging interface
-print("Logging interface background thread started successfully.\n")
+print("Logging interface background thread started successfully.")
 
-log = log_interface.log  # Get the log method from the interface for easy use in the API server code
+log = (
+    log_interface.log
+)  # Get the log method from the interface for easy use in the API server code
 
 # Authentication related
 # Cache for token validation results
@@ -130,22 +132,24 @@ def jwt_validation_required(func):
                     message="Request timed out while validating token",
                     level="ERROR",
                     source="JWTValidation",
-                    tags={"host": API_SERVER_HOST}
+                    sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
                 )
-                return jsonify({"error": "Login request timed out"}), STATUS_CODES[
-                    "gateway_timeout"
-                ]
+                return (
+                    jsonify({"error": "Login request timed out"}),
+                    STATUS_CODES["gateway_timeout"],
+                )
 
             except RequestException as ex:
                 log(
                     message=f"Error validating token: {ex}",
                     level="ERROR",
                     source="JWTValidation",
-                    tags={"host": API_SERVER_HOST}
+                    sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
                 )
-                return jsonify({
-                    "error": "internal server error while validating token"
-                }), STATUS_CODES["internal_error"]
+                return (
+                    jsonify({"error": "internal server error while validating token"}),
+                    STATUS_CODES["internal_error"],
+                )
 
         # Pass the extracted identity to the wrapped function
         # Only if the function accepts it (OPTIONS endpoint do not use it)
@@ -243,8 +247,8 @@ def get_hateos_location_string(bp_name: str, id_: Union[str, int]) -> str:
 
 def handle_options_request(resource_class) -> Response:
     """
-    Handles OPTIONS requests for the resources.  
-    This method is used to determine the allowed HTTP methods for this resource.  
+    Handles OPTIONS requests for the resources.
+    This method is used to determine the allowed HTTP methods for this resource.
     It returns a 200 OK response with the allowed methods in the Allow header.
     """
 

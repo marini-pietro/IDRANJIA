@@ -1,6 +1,6 @@
-""""
+""" "
 Hydrant Blueprint Module
-This module defines the Flask Blueprint for managing hydrant resources. 
+This module defines the Flask Blueprint for managing hydrant resources.
 It includes endpoints for creating, reading, updating, and deleting hydrant records in the database.
 """
 
@@ -37,11 +37,13 @@ api = Api(hydrant_bp)
 # Define schemas
 class HydrantSchema(ma.Schema):
     """
-    Schema for validating and serializing Hydrant data.  
+    Schema for validating and serializing Hydrant data.
     This schema defines the fields required for a hydrant record.
     """
 
-    id = fields.Integer(dump_only=True, validate=lambda x: x > 0) # dump-only means read-only
+    id = fields.Integer(
+        dump_only=True, validate=lambda x: x > 0
+    )  # dump-only means read-only
     stato = fields.String(required=True)
     latitudine = fields.Float(required=True)
     longitudine = fields.Float(required=True)
@@ -58,7 +60,7 @@ hydrant_schema = HydrantSchema()
 
 class HydrantResource(Resource):
     """
-    Hydrant resource for managing hydrant data.  
+    Hydrant resource for managing hydrant data.
     This class provides methods to create, read, update, and delete hydrant records.
     """
 
@@ -146,7 +148,12 @@ class HydrantResource(Resource):
             message=f"User {identity} fetched hydrant with id {id_}",
             level="INFO",
             source="hydrant_fetch",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "hydrant_id": id_,
+            },
         )
 
         # Return the hydrant as a JSON response
@@ -226,7 +233,9 @@ class HydrantResource(Resource):
 
         # Load input data
         try:
-            data = hydrant_schema.load(request.get_json(), partial=True) # partial=True to allow partial updates
+            data = hydrant_schema.load(
+                request.get_json(), partial=True
+            )  # partial=True to allow partial updates
         except ValidationError as err:
             return create_response(
                 message={"error": err.messages},
@@ -265,7 +274,7 @@ class HydrantResource(Resource):
         for key, value in data.items():
             setattr(hydrant, key, value)
 
-		    # Commit the changes to the database
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -273,7 +282,12 @@ class HydrantResource(Resource):
             message=f"User {identity} updated hydrant with id {id_}",
             level="INFO",
             source="hydrant_update",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "hydrant_id": id_,
+            },
         )
 
         # Return the response
@@ -336,10 +350,10 @@ class HydrantResource(Resource):
                 status_code=STATUS_CODES["not_found"],
             )
 
-		# Delete the hydrant from the database
+        # Delete the hydrant from the database
         db.session.delete(hydrant)
-        
-		# Commit the changes to the database
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -347,7 +361,12 @@ class HydrantResource(Resource):
             message=f"User {identity} deleted hydrant with id {id_}",
             level="INFO",
             source="hydrant_deletion",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "hydrant_id": id_,
+            },
         )
 
         # Return the response
@@ -377,9 +396,9 @@ class HydrantResource(Resource):
 
 class HydrantPostResource(Resource):
     """
-    Resource for creating new hydrants.  
-    This class provides a method to create a new hydrant record.  
-    Separated from HydrantResource because it is the easiest way to force different endpoints paths.  
+    Resource for creating new hydrants.
+    This class provides a method to create a new hydrant record.
+    Separated from HydrantResource because it is the easiest way to force different endpoints paths.
     """
 
     ENDPOINT_PATHS = [f"/{BP_NAME}"]
@@ -458,7 +477,7 @@ class HydrantPostResource(Resource):
             db.session.query(User).filter_by(email=identity).exists()
         ).scalar()
 
-		# If the email does not exist, return an error
+        # If the email does not exist, return an error
         if email_exists is False:
             return create_response(
                 message={"error": "email found in JWT not present in database"},
@@ -474,7 +493,7 @@ class HydrantPostResource(Resource):
             )
         ).scalar()
 
-		# If the hydrant already exists, return an error
+        # If the hydrant already exists, return an error
         if hydrant_exists is True:
             return create_response(
                 message={
@@ -495,11 +514,11 @@ class HydrantPostResource(Resource):
             accessibilità=data["accessibilità"],
             email_ins=identity,
         )
-        
-		# Add the new hydrant to the database
+
+        # Add the new hydrant to the database
         db.session.add(new_hydrant)
-        
-		# Commit the changes to the database
+
+        # Commit the changes to the database
         db.session.commit()
 
         # Log the action
@@ -507,7 +526,12 @@ class HydrantPostResource(Resource):
             message=f"User {identity} created hydrant with id_ {new_hydrant.id}",
             level="INFO",
             source="hydrant_creation",
-            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": new_hydrant.id}
+            sd_tags={
+                "endpoint": request.path,
+                "method": request.method,
+                "identity": identity,
+                "hydrant_id": new_hydrant.id,
+            },
         )
 
         # Return the response

@@ -6,7 +6,6 @@ It also handles delayed logs when the rate limit is exceeded.
 """
 
 # Library imports
-import re as regex_lib
 import logging
 import time
 import threading
@@ -14,12 +13,13 @@ import selectors
 import socket as socket_lib
 from datetime import datetime
 from collections import defaultdict, deque
-from typing import List, Tuple, Deque, Optional, Pattern, Match
+from typing import List, Tuple, Deque, Optional
 from threading import Thread, Lock
 from cachetools import TTLCache
 from os.path import abspath as os_path_abspath
 from os.path import dirname as os_path_dirname
 from os.path import join as os_path_join
+import json
 
 # Local imports
 from log_config import (
@@ -30,7 +30,6 @@ from log_config import (
     LOG_SERVER_IDENTIFIER,
     LOG_SERVER_RATE_LIMIT,
     DELAYED_LOGS_QUEUE_SIZE,
-    RETAIN_LOGS_RATE_LIMIT_TRIGGER,
     RETAIN_LOGS_RATE_LIMIT_TRIGGER,
     LOG_RATE_LIMIT_TRIGGER_EVENTS,
     LOG_SERVER_RATE_LIMIT_MAX_REQUESTS,
@@ -43,6 +42,7 @@ rate_limit_cache = TTLCache(
     maxsize=LOG_SERVER_RATE_LIMIT_CACHE_SIZE, ttl=LOG_SERVER_RATE_LIMIT_CACHE_TTL
 )  # Cache with a TTL equal to the time window
 rate_limit_lock = Lock()  # Lock for thread-safe file access
+
 
 # Define the logger class
 class Logger:
@@ -69,9 +69,8 @@ class Logger:
         file_handler.setLevel(file_level)
 
         # Create formatter objects and set the format of the log messages
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        # Format: timestamp - log level - message
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         console_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
 
@@ -102,7 +101,9 @@ class Logger:
         Close all handlers of the logger.
         """
 
-        for handler in self.logger.handlers[:]: # [:] copies the list to avoid modification during iteration
+        for handler in self.logger.handlers[
+            :
+        ]:  # [:] copies the list to avoid modification during iteration
             handler.close()
             self.logger.removeHandler(handler)
 
@@ -138,7 +139,7 @@ def start_syslog_server(host: str, port: int) -> None:
     - Incoming datagrams are received with recvfrom(65535). Data is decoded as UTF-8;
         if decoding fails, invalid sequences are replaced and a warning is emitted via
         logger.log with an origin identifying the source IP.
-    - Received messages are handed off to process_syslog_message(message, addr) for
+    - Received messages are handed off to syslog_message_preprocessing(message, addr) for
         application-level handling.
     - Socket and selector errors during recvfrom are skipped (socket remains in use).
     - On shutdown, the function sets shutdown_flag, unregisters and closes all
@@ -233,16 +234,19 @@ def start_syslog_server(host: str, port: int) -> None:
             if not events:  # If there are no events, continue to the next iteration
                 continue
             for key, _ in events:
-                sock = key.fileobj # Get the socket object from the selector key
+                sock = key.fileobj  # Get the socket object from the selector key
                 try:
                     # Receive data from the socket
                     data, addr = sock.recvfrom(
                         65535
                     )  # buffer size set to maximum UDP size to reduce risk of truncation
                     # UPD related fragmentation can still occur; handling of fragmented messages is not implemented
+                    # becuase of the low likelihood of occurrence in typical syslog use cases
                 except OSError:
                     # Socket error — skip this socket for now
                     continue
+
+                # Decode the received data
                 try:
                     message = data.decode("utf-8")  # Decode as UTF-8
                 except (
@@ -255,11 +259,11 @@ def start_syslog_server(host: str, port: int) -> None:
                             "Received non-UTF8 bytes from client — replaced invalid sequences "
                             f"in message: {message}"
                         ),
-                        origin=f"source_ip={addr[0]}",
+                        origin=LOG_SERVER_IDENTIFIER,
                     )
 
                 # Hand off the message to the processing function
-                process_syslog_message(message, addr)
+                syslog_message_preprocessing(message, addr)
 
     except KeyboardInterrupt:
         print("Shutting down syslog server...")
@@ -284,28 +288,6 @@ def start_syslog_server(host: str, port: int) -> None:
         logger.close()  # Close the logger
 
 
-# Compile the RFC 5424 syslog message regex pattern once
-# Full pattern breakdown:
-# <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG
-# Note: This pattern does not capture the entire RFC 5424 spec (e.g., NILVALUE handling,
-# timestamp formats, etc.) but provides a basic structure for common messages.
-# Note: Pattern is set to greedy matching for MSG to capture the full remaining payload.
-SYSLOG_PATTERN: Pattern[str] = regex_lib.compile(
-    r"<(\d+)>"  # PRI
-    r"(\d{1,2}) "  # VERSION
-    r"(\S+) "  # TIMESTAMP
-    r"(\S+) "  # HOSTNAME
-    r"(\S+) "  # APP-NAME
-    r"(\S+) "  # PROCID
-    r"(\S+) "  # MSGID
-    # STRUCTURED-DATA: either '-' or one-or-more SD-ELEMENTs like [id ...][id2 ...]
-    r"((?:\[[^\]]*\])|-)"
-    r"\s(.*)"  # MSG (remaining payload)
-)
-
-# Dictionary to track message counts and timestamps per source
-message_counts = defaultdict(lambda: {"count": 0, "timestamp": time.time()})
-
 # Queue to store delayed logs
 delayed_logs: Deque[Tuple[str, tuple]] = deque(
     maxlen=DELAYED_LOGS_QUEUE_SIZE
@@ -315,7 +297,7 @@ queue_lock = Lock()  # Lock to ensure thread-safe access to the queue
 
 def enforce_rate_limit(client_ip: str) -> bool:
     """
-    Check if the client IP is rate-limited using an in-memory TTLCache.  
+    Check if the client IP is rate-limited using an in-memory TTLCache.
     (This function will return true (the rate has been exceeded) on the exact request that matches the limit, i.e. the 100th request is the limit is 100 requests per time window)
     """
 
@@ -333,7 +315,7 @@ def enforce_rate_limit(client_ip: str) -> bool:
         return client_data["count"] > LOG_SERVER_RATE_LIMIT_MAX_REQUESTS
 
 
-def process_syslog_message(message: str, addr: tuple) -> None:
+def syslog_message_preprocessing(message: str, addr: tuple) -> None:
     """
     Process and log a syslog message according to RFC 5424 with shared rate limiting.
 
@@ -357,123 +339,102 @@ def process_syslog_message(message: str, addr: tuple) -> None:
             # Add the log to the delayed queue instead of dropping it (if enabled)
             if RETAIN_LOGS_RATE_LIMIT_TRIGGER is True:
                 with queue_lock:
-                    delayed_logs.append((message, addr))
-                    
+                    delayed_logs.append((message))
+
             # Log the rate limit event if enabled
             if LOG_RATE_LIMIT_TRIGGER_EVENTS is True:
                 logger.log(
                     log_type="warning",
                     message=f"{source_ip} exceeded rate limit. Delaying message: {message}",
-                    origin=f"source_ip={source_ip}",
+                    origin=LOG_SERVER_IDENTIFIER,
                 )
 
             return
 
     # Process the syslog message as usual
-    _process_message(message, addr)
+    _process_message(message)
 
 
-def _process_message(message: str, addr: tuple) -> None:
+def _process_message(message: str) -> None:
     """
     Helper function to parse and log a single syslog message.
 
     This function assumes `message` is a decoded string and `addr` is the
-    address tuple from recvfrom(). It will parse the message using
-    SYSLOG_PATTERN and emit structured logs via `logger`.
+    address tuple from recvfrom(). It will parse the message as JSON
+    and emit structured logs via `logger`.
     """
-    match: Optional[Match[str]] = SYSLOG_PATTERN.match(message)
-    if match:
-        # Extract priority and validate
-        raw_priority = match.group(1)
-        try:
-            priority = int(raw_priority)  # Convert PRI to integer
-        except (ValueError, TypeError, OverflowError):
-            # Non-numeric PRI — log a warning and default to a safe informational priority
-            logger.log(
-                log_type="warning",
-                message=(
-                    f"Invalid PRI received: {raw_priority}; expected integer 0-191. "
-                    "Defaulting to informational severity."
-                ),
-                origin=f"source_ip={addr[0]}",
-            )
-            priority = 5  # default to Notice/Informational
+    try:
+        # Parse the message as JSON
+        log_data = json.loads(message)
 
-        # Validate numeric PRI is within RFC allowed range (0..191)
-        if not (0 <= priority <= 191):
-            logger.log(
-                log_type="warning",
-                message=(
-                    f"PRI value out of range: {raw_priority}; expected 0-191. "
-                    "Defaulting to informational severity."
-                ),
-                origin=f"source_ip={addr[0]}",
-            )
-            priority = 5  # default to Notice/Informational
+        # Extract fields from JSON
+        level = log_data.get("level", "INFO").upper()
+        service = log_data.get("service", "unknown-service")
+        timestamp = log_data.get("timestamp", "")
+        process_id = log_data.get("process_id", "-")
+        message_id = log_data.get("message_id", "-")
+        msg_content = log_data.get("message", "")
+        tags = log_data.get("tags", {})
+        hostname = log_data.get("hostname", "unknown-hostname")
 
-        # Extract remaining fields
-        version = match.group(2)
-        timestamp = match.group(3)
-        hostname = match.group(4)
-        app_name = match.group(5)
-        proc_id = match.group(6)
-        msg_id = match.group(7)
-        structured_data = match.group(8)
-        msg_content = match.group(9)
+        # Convert level to log server's log_type
+        level_map = {
+            "DEBUG": "debug",
+            "INFO": "info",
+            "WARNING": "warning",
+            "ERROR": "error",
+            "CRITICAL": "critical",
+        }
+        log_type = level_map.get(level, "info")
 
-        # Validate timestamp (accept RFC5424 NILVALUE "-" as valid)
-        def _is_valid_rfc3339(timestamp: str) -> bool:
-            if timestamp == "-" or timestamp is None:
-                return True
-            s = timestamp
-            # datetime.fromisoformat does not accept 'Z' for UTC, convert it to +00:00
-            if s.endswith("Z"):
-                s = s[:-1] + "+00:00"
-            try:
-                # fromisoformat supports YYYY-MM-DDTHH:MM:SS[.ffffff][+HH:MM]
-                datetime.fromisoformat(s)
-                return True
-            except Exception:
-                return False
+        # Format the message in RFC 5424 style
+        # Facility 1 (user-level), severity from level
+        severity_map = {"DEBUG": 7, "INFO": 6, "WARNING": 4, "ERROR": 3, "CRITICAL": 2}
+        severity = severity_map.get(level, 6)
+        priority = (1 << 3) | severity  # Facility 1, user-level
 
-        if not _is_valid_rfc3339(timestamp):  # Validate timestamp format
-            logger.log(
-                log_type="warning",
-                message=f"Invalid RFC3339 timestamp received: {timestamp}",
-                origin=f"source_ip={addr[0]}",
-            )
+        # Format timestamp for RFC 5424 (if provided, otherwise use '-')
+        rfc_timestamp = timestamp.replace(" ", "T") if timestamp else "-"
 
-        # Map RFC 5424 severity (priority % 8) to Python logging methods
-        # RFC severities: 0=Emergency,1=Alert,2=Critical,3=Error,4=Warning,5=Notice,6=Informational,7=Debug
-        # Map Notice/Informational to 'info' and Emergency/Alert/Critical to 'critical'
-        log_level = {
-            0: "critical",
-            1: "critical",
-            2: "critical",
-            3: "error",
-            4: "warning",
-            5: "info",
-            6: "info",
-            7: "debug",
-        }.get(
-            priority % 8, "info"
-        )  # Default to "info" if unknown
+        # Create structured data from tags
+        structured_data = "-"
+        if tags:  # If there are tags, format them as structured data elements
+            sd_elements = []  # List to hold structured data elements
 
-        # Log the message with detailed information
+            # Iterate over tags and format them as key="value" pairs
+            for key, value in tags.items():
+                sd_elements.append(f'{key}="{value}"')
+
+            # Source IP and source port cannot be added here because the syslog server only knows the data
+            # of the logging interface not the original sender of the log message
+            # so those kind of values must be passed as part of the tags by the logging interface itself if needed
+
+            structured_data = f'[{service}@32473 {" ".join(sd_elements)}]'  # Format final structured data string
+
+        # Create RFC 5424 formatted message
+        # 1 is the version of the syslog protocol (RFC 5424 always uses version 1)
+        rfc_message = f"<{priority}>1 {rfc_timestamp} {hostname} {service} {process_id} {message_id} {structured_data} {msg_content}"
+
+        # Log with RFC 5424 format
         logger.log(
-            log_type=log_level,
-            message=(
-                f"<{priority}> {version} {timestamp} {hostname} {app_name} {proc_id} "
-                f"{msg_id} {structured_data} {msg_content}"
-            ),
-            origin=f"source_ip={addr[0]}",
+            log_type=log_type,
+            message=rfc_message,
+            origin=LOG_SERVER_IDENTIFIER,
         )
-    else:
-        # Log a warning for invalid syslog messages
+
+    except json.JSONDecodeError:
+        # Log a warning for invalid JSON messages
         logger.log(
             log_type="warning",
-            message=f"Invalid syslog message: {message}",
-            origin=f"source_ip={addr[0]}",
+            message=f"Invalid JSON message received: {message}",
+            origin=LOG_SERVER_IDENTIFIER,
+        )
+    except Exception as e:
+        # Log any other parsing errors
+        logger.log(
+            log_type="error",
+            message=f"Error processing message: {e}. Message: {message}",
+            origin=LOG_SERVER_IDENTIFIER,
         )
 
 
@@ -490,10 +451,12 @@ def process_delayed_logs() -> None:
             if delayed_logs:
                 message, addr = delayed_logs.popleft()
                 _process_message(message, addr)
+
         time.sleep(0.1)  # Adjust the sleep interval as needed
 
 
 # Start a background thread to process delayed logs
+# This thread runs as a daemon so it will not block program exit
 Thread(target=process_delayed_logs, daemon=True).start()
 
 if __name__ == "__main__":
@@ -510,14 +473,20 @@ if __name__ == "__main__":
         start_syslog_server(LOG_SERVER_HOST, LOG_SERVER_PORT)
 
     except KeyboardInterrupt:
+
+        logger.close()  # Ensure logger is closed on user interrupt
+
         logger.log(
             log_type="info",
             message="Syslog server stopped by user via KeyboardInterrupt.",
             origin=LOG_SERVER_IDENTIFIER,
         )
     except Exception as ex:
+
+        logger.close()  # Ensure logger is closed on exception
+
         logger.log(
             log_type="warning",
-            message=f"Syslog server encountered stopped with exception: {ex}",
+            message=f"Syslog server encountered the following exception: {ex}",
             origin=LOG_SERVER_IDENTIFIER,
         )

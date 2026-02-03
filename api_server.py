@@ -61,25 +61,25 @@ main_api = Flask(__name__)
 
 # Update configuration settings for the Flask app
 main_api.config.update(
-    JWT_SECRET_KEY=JWT_SECRET_KEY, # Same secret key as the auth microservice
-    JWT_ALGORITHM=JWT_ALGORITHM,   # Same algorithm as the auth microservice
-    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION, # Where to look for tokens
-    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME, # Custom query string name
-    JWT_JSON_KEY=JWT_JSON_KEY,     # Custom JSON key for access tokens
-    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY, # Custom JSON key for refresh tokens
-    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES, # Refresh token valid duration
-    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,     # Access token valid duration
-    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI, # Database connection URI
-    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS, # Disable track modifications
+    JWT_SECRET_KEY=JWT_SECRET_KEY,  # Same secret key as the auth microservice
+    JWT_ALGORITHM=JWT_ALGORITHM,  # Same algorithm as the auth microservice
+    JWT_TOKEN_LOCATION=JWT_TOKEN_LOCATION,  # Where to look for tokens
+    JWT_QUERY_STRING_NAME=JWT_QUERY_STRING_NAME,  # Custom query string name
+    JWT_JSON_KEY=JWT_JSON_KEY,  # Custom JSON key for access tokens
+    JWT_REFRESH_JSON_KEY=JWT_REFRESH_JSON_KEY,  # Custom JSON key for refresh tokens
+    JWT_REFRESH_TOKEN_EXPIRES=JWT_REFRESH_TOKEN_EXPIRES,  # Refresh token valid duration
+    JWT_ACCESS_TOKEN_EXPIRES=JWT_ACCESS_TOKEN_EXPIRES,  # Access token valid duration
+    SQLALCHEMY_DATABASE_URI=SQLALCHEMY_DATABASE_URI,  # Database connection URI
+    SQLALCHEMY_TRACK_MODIFICATIONS=SQLALCHEMY_TRACK_MODIFICATIONS,  # Disable track modifications
 )
 
 # Swagger template with hardcoded auth endpoints
 swagger_template = {
     "openapi": "3.0.2",
     "info": {
-        "title": "IDRANJIA API",
+        "title": "IDRANTI SICURI API",
         "version": API_VERSION,
-        "description": "API documentation for IDRANJIA, including authentication endpoints.",
+        "description": "API documentation for IDRANTI SICURI, including authentication endpoints.",
     },
     "paths": {
         # Only include endpoints data from other services here.
@@ -207,7 +207,7 @@ swagger_template = {
 
 # Configure Flasgger (Swagger UI) with the combined template
 main_api.config["SWAGGER"] = {
-    "title": "IDRANJIA API Documentation",
+    "title": "IDRANTI SICURI API Documentation",
     "uiversion": 3,
     "openapi": "3.0.2",
 }
@@ -318,25 +318,26 @@ def is_input_safe(
 
 
 def _check_size_within_limit(
-    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]], max_len: int = SQL_SCAN_MAX_LEN
+    data: Union[str, List[Any], Dict[Any, Any], Tuple[Any]],
+    max_len: int = SQL_SCAN_MAX_LEN,
 ) -> bool:
     """
     Recursively ensure that no string in the provided data exceeds the configured
-    per-field limit.  
+    per-field limit.
     Returns True when within limits, False otherwise.
     """
 
     # check string length
     if isinstance(data, str):
         return len(data) <= max_len
-    
+
     # check lists/tuples recursively
     if isinstance(data, (list, tuple)):
         for item in data:
             if not _check_size_within_limit(item, max_len=max_len):
                 return False
         return True
-    
+
     # check dicts recursively
     if isinstance(data, dict):
         for key, value in data.items():
@@ -346,7 +347,7 @@ def _check_size_within_limit(
             if not _check_size_within_limit(value, max_len=max_len):
                 return False
         return True
-    
+
     # other types are not size-checked
     return True
 
@@ -380,10 +381,12 @@ def _validate_user_data() -> Optional[Tuple[Any, int]]:
                 jsonify({"error": ERROR_MESSAGES["bad_content_type"]}),
                 STATUS_CODES["bad_request"],
             )
-        
+
         # Parse JSON body
         try:
-            data = request.get_json(silent=False) # silent=False to raise on invalid JSON
+            data = request.get_json(
+                silent=False
+            )  # silent=False to raise on invalid JSON
             if data == {}:
                 return (
                     jsonify({"error": ERROR_MESSAGES["empty_body"]}),
@@ -442,8 +445,10 @@ def _enforce_rate_limit() -> Optional[Tuple[Any, int]]:
 
     # Check if rate limiting is enabled
     if API_SERVER_RATE_LIMIT:
-        client_ip = request.remote_addr # Get client IP address
-        if is_rate_limited(client_ip): # Check if the client IP has exceeded the rate limit
+        client_ip = request.remote_addr  # Get client IP address
+        if is_rate_limited(
+            client_ip
+        ):  # Check if the client IP has exceeded the rate limit
             return (
                 jsonify({"error": ERROR_MESSAGES["rate_limited"]}),
                 STATUS_CODES["too_many_requests"],
@@ -527,21 +532,23 @@ def _sanitize_callback(callback: object, max_len: int = 200, fp_len: int = 12):
 @jwt.unauthorized_loader
 def custom_unauthorized_response(callback):
     # sanitize and fingerprint the callback before logging
-    cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
-    
-    # Use the SQLiteUDPLogger instance
+    cb_short, cb_fp = _sanitize_callback(
+        callback
+    )  # get sanitized callback and fingerprint
+
+    # Log the unauthorized access attempt
     log(
         message=f"API reached with missing token, callback: {cb_short} [fp:{cb_fp}]",
         level="ERROR",
-        tags={
+        sd_tags={
             "host": API_SERVER_HOST,
             "port": API_SERVER_PORT,
-            "jwt_error": "missing_token"
+            "jwt_error": "missing_token",
         },
         source="jwt-unauthorized-loader",
-        priority=1  # High priority for security/auth failures
+        priority=1,  # High priority for security/auth failures
     )
-    
+
     return (
         jsonify(INVALID_JWT_MESSAGES["missing_token"][0]),
         INVALID_JWT_MESSAGES["missing_token"][1],
@@ -552,26 +559,27 @@ def custom_unauthorized_response(callback):
 @jwt.invalid_token_loader
 def custom_invalid_token_response(callback):
     # sanitize and fingerprint the callback before logging
-    cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
-    
+    cb_short, cb_fp = _sanitize_callback(
+        callback
+    )  # get sanitized callback and fingerprint
+
     # Use the SQLiteUDPLogger instance
     log(
         message=f"API reached with invalid token, callback: {cb_short} [fp:{cb_fp}]",
         level="ERROR",
-        tags={
+        sd_tags={
             "host": API_SERVER_HOST,
             "port": API_SERVER_PORT,
-            "jwt_error": "invalid_token"
+            "jwt_error": "invalid_token",
         },
         source="jwt-invalid-token-loader",
-        priority=1  # High priority for security/auth failures
+        priority=1,  # High priority for security/auth failures
     )
-    
+
     return (
         jsonify(INVALID_JWT_MESSAGES["invalid_token"][0]),
         INVALID_JWT_MESSAGES["invalid_token"][1],
     )
-
 
 
 # Helper function to summarize JWT headers and payloads in logs
@@ -580,7 +588,7 @@ def _summarize(d: dict, keys: tuple):
     # if not a dict, return string representation
     if not isinstance(d, dict):
         return str(d)
-    
+
     # extract specified keys with truncation
     out = {}
     for k in keys:
@@ -602,7 +610,7 @@ def custom_expired_token_response(jwt_header, jwt_payload):
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
     )
-    
+
     log(
         message=(
             "API reached with expired JWT. "
@@ -610,9 +618,9 @@ def custom_expired_token_response(jwt_header, jwt_payload):
         ),
         level="ERROR",
         source="custom_expired_token_response",
-        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+        sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
     )
-    
+
     return (
         jsonify(INVALID_JWT_MESSAGES["expired_token"][0]),
         INVALID_JWT_MESSAGES["expired_token"][1],
@@ -627,7 +635,7 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
     )
-    
+
     log(
         message=(
             "API reached with revoked JWT. "
@@ -635,9 +643,9 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
         ),
         level="ERROR",
         source="custom_revoked_token_response",
-        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+        sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
     )
-    
+
     return (
         jsonify(INVALID_JWT_MESSAGES["revoked_token"][0]),
         INVALID_JWT_MESSAGES["revoked_token"][1],
@@ -685,11 +693,15 @@ if __name__ == "__main__":
             message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {ex}",
             level="ERROR",
             source="blueprint_loader",
-            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "blueprints_dir": blueprints_dir}
+            sd_tags={
+                "host": API_SERVER_HOST,
+                "port": API_SERVER_PORT,
+                "blueprints_dir": blueprints_dir,
+            },
         )
         # Also print to console for immediate feedback
         print(f"ERROR: api_blueprints directory not found or inaccessible: {ex}")
-        sys.exit(1) # exit with error
+        sys.exit(1)  # exit with error
 
     # Require at least one .py file to proceed (avoid starting with an empty blueprints dir)
     python_files = [f for f in entries if f.endswith(".py")]
@@ -697,14 +709,18 @@ if __name__ == "__main__":
         # if no Python files found, log and exit
         log(
             message=f"No Python files found in '{blueprints_dir}'. At least one file is required.",
-            level="ERROR", 
+            level="ERROR",
             source="blueprint_loader",
-            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "blueprints_dir": blueprints_dir}
+            sd_tags={
+                "host": API_SERVER_HOST,
+                "port": API_SERVER_PORT,
+                "blueprints_dir": blueprints_dir,
+            },
         )
         print(
             f"ERROR: No Python files found in {blueprints_dir}; add at least one blueprint file."
-        ) # Print to console for immediate feedback
-        sys.exit(1) #exit with error
+        )  # Print to console for immediate feedback
+        sys.exit(1)  # exit with error
 
     for filename in os_listdir(blueprints_dir):
         # Only consider Python files following the *_bp.py naming convention
@@ -712,8 +728,8 @@ if __name__ == "__main__":
         if not filename.endswith("_bp.py"):
             continue
 
-        module_name: str = filename[:-3] # strip .py extension
-        full_module_name = f"api_blueprints.{module_name}" # construct full import path
+        module_name: str = filename[:-3]  # strip .py extension
+        full_module_name = f"api_blueprints.{module_name}"  # construct full import path
 
         # Try importing the module; log and continue on failure
         try:
@@ -722,8 +738,12 @@ if __name__ == "__main__":
             log(
                 message=f"Failed to import blueprint module '{full_module_name}': {ex}",
                 level="ERROR",
-                source="blueprint_loader", 
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name}
+                source="blueprint_loader",
+                sd_tags={
+                    "host": API_SERVER_HOST,
+                    "port": API_SERVER_PORT,
+                    "module": full_module_name,
+                },
             )
             print(f"Skipping {full_module_name}: import failed: {ex}")
             continue
@@ -750,7 +770,11 @@ if __name__ == "__main__":
                 message=f"No Flask Blueprint found in module '{full_module_name}'.",
                 level="WARNING",
                 source="blueprint_loader",
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name}
+                sd_tags={
+                    "host": API_SERVER_HOST,
+                    "port": API_SERVER_PORT,
+                    "module": full_module_name,
+                },
             )
             print(f"No blueprint found in {full_module_name}; skipping.")
             continue
@@ -758,19 +782,28 @@ if __name__ == "__main__":
         # Register all discovered Blueprints
         for attr_name, blueprint in found_blueprints:
             try:
-                main_api.register_blueprint(blueprint, url_prefix=URL_PREFIX) # Register with proper URL prefix
+                main_api.register_blueprint(
+                    blueprint, url_prefix=URL_PREFIX
+                )  # Register with proper URL prefix
                 # Log successful registration
                 print(
                     f"Registered blueprint: {full_module_name}.{attr_name} with prefix {URL_PREFIX}"
                 )
-            except Exception as ex: 
+            except Exception as ex:
                 log(
                     message=f"Failed to register blueprint '{full_module_name}.{attr_name}': {ex}",
                     level="ERROR",
                     source="blueprint_loader",
-                    tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name, "attribute": attr_name}
-                ) # Log the error
-                print(f"Failed to register {full_module_name}.{attr_name}: {ex}") # Print to console for immediate feedback
+                    sd_tags={
+                        "host": API_SERVER_HOST,
+                        "port": API_SERVER_PORT,
+                        "module": full_module_name,
+                        "attribute": attr_name,
+                    },
+                )  # Log the error
+                print(
+                    f"Failed to register {full_module_name}.{attr_name}: {ex}"
+                )  # Print to console for immediate feedback
 
     # Initialize the database inside the app context
     with main_api.app_context():
@@ -782,42 +815,38 @@ if __name__ == "__main__":
                 message=f"Database connection failed during create_all: {e}",
                 level="ERROR",
                 source="database_init",
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+                sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )
             print(
-                f"ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config.\n Current SQLALCHEMY_DATABASE_URI={SQLALCHEMY_DATABASE_URI}"
-            ) # Print to console for immediate feedback
-            sys.exit(1) # exit with error
-
-    # Log the server start
-    log(
-        message="API server started",
-        level="INFO",
-        source="server_startup",
-        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
-    )
+                f"ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config.\nCurrent SQLALCHEMY_DATABASE_URI={SQLALCHEMY_DATABASE_URI}"
+            )  # Print to console for immediate feedback
+            sys.exit(1)  # exit with error
 
     # Start the server
     if API_SERVER_DEBUG_MODE is True:
-      
+
         # Log server start event
         log(
             message=f"API server started with Flask built-in server with debug mode set to {API_SERVER_DEBUG_MODE}",
             level="INFO",
             source="server_startup",
-            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
-        )    
+            sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
+        )
 
         # Start the server with Flask's built-in server
         if (API_SERVER_SSL_CERT == "") != (API_SERVER_SSL_KEY == ""):
-            raise ValueError("Both SSL certificate and key must be provided, or both left empty")
+            raise ValueError(
+                "Both SSL certificate and key must be provided, or both left empty"
+            )
         else:
             main_api.run(
                 host=API_SERVER_HOST,
                 port=API_SERVER_PORT,
                 debug=API_SERVER_DEBUG_MODE,
                 ssl_context=(
-                    (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY) if IS_API_SERVER_SSL else None
+                    (API_SERVER_SSL_CERT, API_SERVER_SSL_KEY)
+                    if IS_API_SERVER_SSL
+                    else None
                 ),
             )
 
@@ -826,8 +855,8 @@ if __name__ == "__main__":
             message="API server stopped (Flask run() exited)",
             level="INFO",
             source="server_shutdown",
-            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
-        )    
+            sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
+        )
 
     else:
         try:
@@ -836,7 +865,7 @@ if __name__ == "__main__":
                 message="API server started with waitress-serve",
                 level="INFO",
                 source="server_startup",
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+                sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )
 
             # Start the server with waitress
@@ -853,7 +882,11 @@ if __name__ == "__main__":
                 message=f"API server started with waitress shutdown with code {exit_code}",
                 level="INFO",
                 source="server_shutdown",
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "exit_code": exit_code}
+                sd_tags={
+                    "host": API_SERVER_HOST,
+                    "port": API_SERVER_PORT,
+                    "exit_code": exit_code,
+                },
             )
 
         except Exception as ex:
@@ -861,5 +894,5 @@ if __name__ == "__main__":
                 message=f"Exception while starting API server with waitress-serve: {ex}",
                 level="ERROR",
                 source="server_startup",
-                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+                sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )

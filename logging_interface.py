@@ -9,9 +9,11 @@ import json
 import socket
 import threading
 import time
+from contextlib import contextmanager as contextlib_contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
 
 class SQLiteUDPLogger:
     """
@@ -24,9 +26,9 @@ class SQLiteUDPLogger:
         syslog_host: str,
         service_name: str = "unknown-service",  # name of the service using the interface object
         syslog_port: int = 514,  # standard syslog UDP port as default
-        db_path: str = None, # path to SQLite database file
-        max_retries: int = 5, # max number of retries to send a log message via UDP
-        retry_delay: int = 30, # delay between retries in seconds
+        db_filename: str = "",  # filename for SQLite database file
+        max_retries: int = 5,  # max number of retries to send a log message via UDP
+        retry_delay: int = 30,  # delay between retries in seconds
     ):
 
         self.syslog_host = syslog_host
@@ -36,19 +38,26 @@ class SQLiteUDPLogger:
         self.retry_delay = retry_delay
 
         # If no explicit DB path, create one with timestamp and service name
-        # Couldn't be in default params because datetime.now() needs to be called at init time and service_name is needed
-        if db_path is None: db_path = f"idranjia-logs/{datetime.now(datetime.timezone.utc)}-{self.service_name}-logs.db"
+        # Couldn't be in default params because datetime.utcnow() needs to be called at init time and service_name is needed
+        if db_filename == "":
+            db_filename = f"{datetime.utcnow().strftime('%Y-%m-d_%H-%M-%S')}-{self.service_name}-log.db"
 
-        # Ensure database directory exists
-        db_path_obj = Path(db_path)
-        db_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        # Always create in idranti-sicuri-logs subdirectory
+        current_dir = Path(__file__).parent.absolute()
+        logs_dir = current_dir / "idranti-sicuri-logs"
 
-        self.db_path = str(db_path_obj) # Store DB path
-        self._init_database() # Initialize DB schema
+        # Create directory if it doesn't exist
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create full path to database file
+        self.db_path = logs_dir / db_filename
+        db_path_obj = Path(self.db_path)
+        db_path_obj.touch(exist_ok=True)  # Ensure file exists
+        self._init_database()  # Initialize DB schema
 
         # Background thread for sending logs
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
-        self.running = False # Control flag for thread
+        self.running = False  # Control flag for thread
 
         # UDP socket (reused)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -58,6 +67,7 @@ class SQLiteUDPLogger:
 
     def _init_database(self):
         """Initialize SQLite database with proper schema"""
+
         with self._get_connection() as conn:
 
             # Main logs table
@@ -80,7 +90,7 @@ class SQLiteUDPLogger:
                     error_message TEXT,
                     
                     -- For batching/prioritization
-                    priority INTEGER DEFAULT 0,  # 0=normal, 1=high, 2=critical
+                    priority INTEGER DEFAULT 0, -- 0=normal, 1=high, 2=critical
                     
                     -- Indexes for performance
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -115,6 +125,7 @@ class SQLiteUDPLogger:
         # SQLite handles thread safety with check_same_thread=False
         return sqlite3.connect(self.db_path, check_same_thread=False)
 
+    @contextlib_contextmanager
     def _get_connection(self):
         """Context manager for database connection"""
         conn = self._connection
@@ -124,24 +135,43 @@ class SQLiteUDPLogger:
         finally:
             conn.close()
 
+    def _get_current_utc_time(self) -> datetime:
+        """Get current UTC time as datetime object"""
+        return datetime.utcnow()
+
+    def _format_datetime_utc(self, dt: datetime) -> str:
+        """Format datetime as UTC string without timezone (YYYY-MM-DD HH:MM:SS)"""
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
     def log(
         self,
         message: str,
         level: str = "INFO",
-        tags: Optional[Dict[str, Any]] = None,
+        sd_tags: Optional[Dict[str, Any]] = None,
         source: str = None,
         priority: int = 0,
-    ):
+    ) -> int:
         """
-        Store a log message in SQLite.  
-        This is synchronous and immediately durable.
+        Store a log message in SQLite.
+        message: log message text
+        level: log level (e.g., INFO, ERROR)
+        sd_tags: optional dictionary of that will form part of the structured data
+        source: optional source identifier (e.g., module name)
+        priority: integer priority (0=normal, 1=high, 2=critical)
+
+        N.B: The service identifier is added by the logging interface itself (so no need to pass the value in the tags).
+
+        Returns the log ID in the SQLite database.
         """
+        # Get current UTC time
+        current_time = self._get_current_utc_time()
+
         log_entry = {
-            "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
+            "timestamp": self._format_datetime_utc(current_time),
             "service": self.service_name,
             "level": level,
             "message": message,
-            "tags": json.dumps(tags) if tags else None,
+            "tags": json.dumps(sd_tags) if sd_tags else None,
             "source": source or "unknown",
             "priority": priority,
         }
@@ -164,11 +194,13 @@ class SQLiteUDPLogger:
                 ),
             )
 
-            log_id = cursor.lastrowid
-            print(f"Logged message #{log_id}: {message[:50]}...")
+            log_id = cursor.lastrowid  # Get the ID of the inserted log for tracking
+            print(
+                f"(Logging interface) Passing log message #{log_id}: {message[:50]}..."
+            )
 
-            # Update daily stats
-            today = datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+            # Update daily stats - use UTC date
+            today = current_time.strftime("%Y-%m-%d")
             conn.execute(
                 """
                 INSERT OR IGNORE INTO log_stats (date) VALUES (?)
@@ -189,9 +221,9 @@ class SQLiteUDPLogger:
     def _get_unsent_logs(self, batch_size: int = 10) -> List[tuple]:
         """
         Retrieves logs that haven't been sent yet
-        
+
         batch_size: number of logs to retrieve at once
-        
+
         Returns a list of log tuples
         """
         with self._get_connection() as conn:
@@ -206,9 +238,9 @@ class SQLiteUDPLogger:
             """,
                 (
                     self.max_retries,
-                    (
-                        datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
-                    ).isoformat(),  # Wait 5 min between retries
+                    self._format_datetime_utc(
+                        self._get_current_utc_time() - timedelta(minutes=5)
+                    ),
                     batch_size,
                 ),
             )
@@ -227,18 +259,26 @@ class SQLiteUDPLogger:
             # Parse tags
             tags = json.loads(tags_str) if tags_str else {}
 
-            # Format according to RFC 5424
-            pri = self._level_to_priority(level)
-            formatted_msg = self._format_syslog_message(
-                pri, timestamp, message, level, tags
-            )
+            # Create a simple data structure with the log information
+            log_data = {
+                "timestamp": timestamp,
+                "level": level,
+                "message": message,
+                "tags": tags,
+                "service": self.service_name,
+                "hostname": socket.gethostname(),
+            }
+
+            # Convert to JSON for transmission
+            json_data = json.dumps(log_data)
 
             # Send via UDP
             self.socket.sendto(
-                formatted_msg.encode("utf-8"), (self.syslog_host, self.syslog_port)
+                json_data.encode("utf-8"), (self.syslog_host, self.syslog_port)
             )
 
             # Mark as sent
+            current_utc = self._get_current_utc_time()
             with self._get_connection() as conn:
                 conn.execute(
                     """
@@ -250,14 +290,14 @@ class SQLiteUDPLogger:
                     WHERE id = ?
                 """,
                     (
-                        datetime.now(datetime.timezone.utc).isoformat(),
-                        datetime.now(datetime.timezone.utc).isoformat(),
+                        self._format_datetime_utc(current_utc),
+                        self._format_datetime_utc(current_utc),
                         log_id,
                     ),
                 )
 
                 # Update stats
-                today = datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+                today = current_utc.strftime("%Y-%m-%d")
                 conn.execute(
                     """
                     UPDATE log_stats 
@@ -272,6 +312,7 @@ class SQLiteUDPLogger:
 
         except Exception as ex:
             # Record failure
+            current_utc = self._get_current_utc_time()
             with self._get_connection() as conn:
                 conn.execute(
                     """
@@ -282,14 +323,14 @@ class SQLiteUDPLogger:
                     WHERE id = ?
                 """,
                     (
-                        datetime.now(datetime.timezone.utc).isoformat(),
+                        self._format_datetime_utc(current_utc),
                         str(ex)[:500],  # Truncate long errors
                         log_id,
                     ),
                 )
 
                 # Update stats
-                today = datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+                today = current_utc.strftime("%Y-%m-%d")
                 conn.execute(
                     """
                     UPDATE log_stats 
@@ -307,7 +348,7 @@ class SQLiteUDPLogger:
         """
         Background thread that sends unsent logs.
         """
-        print(f"Log sender thread started for service '{self.service_name}'")
+        print(f"Log sender thread started for service {self.service_name}")
 
         while self.running:
             try:
@@ -315,7 +356,9 @@ class SQLiteUDPLogger:
                 unsent_logs = self._get_unsent_logs()
 
                 if unsent_logs:
-                    print(f"Logging background thread found {len(unsent_logs)} unsent logs")
+                    print(
+                        f"Logging background thread found {len(unsent_logs)} unsent logs"
+                    )
 
                     # Send each log
                     for log in unsent_logs:
@@ -337,50 +380,17 @@ class SQLiteUDPLogger:
                 sleep_time = 5 if unsent_logs else self.retry_delay
                 time.sleep(sleep_time)
 
-            except Exception as e:
-                print(f"Error in sender loop: {e}")
-                time.sleep(60)  # Wait a minute on error
-
-    def _format_syslog_message(
-        self, pri: int, timestamp: str, message: str, level: str, tags: Dict
-    ) -> str:
-        """Format log according to RFC 5424"""
-        # Convert ISO timestamp to syslog format
-        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        syslog_time = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-        # Proper RFC 5424 fields
-        hostname = socket.gethostname()
-        procid = "-"  # Avoid track process ID
-        msgid = "-"  # Optional message category
-
-        # Structured data (optional)
-        sd_elements = []
-        sd_elements.append(f'level="{level}"')
-        for key, value in tags.items():
-            sd_elements.append(f'{key}="{value}"')
-
-        # SD-ID should be something like "myapp@32473" (PEN (Private Enterprise Number) = 32473)
-        # 32473 is registered as an "Example enterprise" by IANA but many open-source apps use it too (since obviously only few can obtain their own)
-        sd_id = f"{self.service_name}@32473"
-
-        sd = f"[{sd_id} {' '.join(sd_elements)}]" if sd_elements else "-"
-
-        # Return fully composed RFC 5424 message
-        return f"<{pri}>1 {syslog_time} {hostname} {self.service_name} {procid} {msgid} {sd} {message}"
-
-    def _level_to_priority(self, level: str) -> int:
-        """Convert log level to syslog priority"""
-        level_map = {"DEBUG": 7, "INFO": 6, "WARNING": 4, "ERROR": 3, "CRITICAL": 2}
-        facility = 1  # user-level
-        severity = level_map.get(level.upper(), 6)
-        return (facility << 3) | severity
+            except Exception as ex:
+                print(f"Error in sender loop: {ex}")
+                time.sleep(30)  # Wait half a minute on error to avoid tight loops
 
     def start(self):
         """Start the background sender thread"""
         self.running = True
         self.sender_thread.start()
-        print(f"Logger started for {self.service_name}")
+        print(
+            f"Logger started for {self.service_name}, sending to {self.syslog_host}:{self.syslog_port}"
+        )
 
     def stop(self):
         """Graceful shutdown"""
@@ -392,6 +402,9 @@ class SQLiteUDPLogger:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get current statistics"""
+        current_utc = self._get_current_utc_time()
+        one_week_ago = self._format_datetime_utc(current_utc - timedelta(days=7))
+
         with self._get_connection() as conn:
             # Get counts
             cursor = conn.execute(
@@ -407,9 +420,7 @@ class SQLiteUDPLogger:
                 (
                     self.max_retries,
                     self.max_retries,
-                    (
-                        datetime.now(datetime.timezone.utc) - timedelta(days=7)
-                    ).isoformat(),  # Last 7 days
+                    one_week_ago,
                 ),
             )
 
@@ -446,17 +457,17 @@ class SQLiteUDPLogger:
         limit: int = 100,
     ) -> List[Dict]:
         """Query logs with filters"""
-        
+
         query = "SELECT * FROM logs WHERE 1=1"
         params = []
 
         if since:
             query += " AND timestamp >= ?"
-            params.append(since.isoformat())
+            params.append(self._format_datetime_utc(since))
 
         if until:
             query += " AND timestamp <= ?"
-            params.append(until.isoformat())
+            params.append(self._format_datetime_utc(until))
 
         if level:
             query += " AND level = ?"
@@ -488,7 +499,14 @@ class SQLiteUDPLogger:
 
 
 # Factory function for easy integration
-def create_interface(syslog_host, syslog_port=None, service_name=None, max_retries=None, retry_delay=None, db_path=None) -> SQLiteUDPLogger:
+def create_interface(
+    syslog_host,
+    syslog_port=None,
+    service_name=None,
+    max_retries=None,
+    retry_delay=None,
+    db_filename=None,
+) -> SQLiteUDPLogger:
     """
     Creates instance of logger interface with given configuration.
     """
@@ -499,11 +517,10 @@ def create_interface(syslog_host, syslog_port=None, service_name=None, max_retri
     print(f"service_name: {service_name}\n")
 
     # Defaults are already handled in SQLiteUDPLogger init
-    # so just pass None for missing params
     return SQLiteUDPLogger(
         syslog_host=syslog_host,
         syslog_port=syslog_port,
-        db_path=db_path,
+        db_filename=db_filename,
         service_name=service_name,
         max_retries=max_retries,
         retry_delay=retry_delay,
