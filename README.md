@@ -53,6 +53,8 @@ Due to the expected very low throughput of log messages passing through the arch
 Instead an ad-hoc solution consisting of a dedicated interface to a small database built with sqlite3 for each microservice, this way the process of handling unsent logs is greatly simplified and, because of the transactional nature of relational databases, losing data is very unlinkely.
 To aid in management, each microservice also includes a dedicated endpoint for admin users to clear out sent logs for the sqlite3 database along with the option of programming this to happend periodically.
 
+Each instance of a microservice will need its own instance of the interface, this can be achieved by placing the `logging_interface.py` along with the server source code in each machine that will run the service(s) and instantiating the interface in the server source code through the provied factory function `create_interface` in `logging_interface.py`.
+
 ## Security measures
 
 This project implements several security measures. Highlights below reference the code and the config values in `config.py`.
@@ -130,4 +132,4 @@ Recommended environment overrides (examples):
 - **Unable to execute quick start/kill scripts to run the code on Windows based machines**: Execute this command in the powershell terminal `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted`, this will allow script execution only for the current terminal session and not affect any other sessions or system-wide settings.
 - **Unable to execuite quick start/kill scripts to run the code on Linux based machines**: Ensure the scripts have the proper permission (i.e you have properly used the `chmod` command).
 - **Cannot connect to database**: Often, especially with deployment and testing configurations, the name (or other configurations) of the database is not fully clear while using only CLI tools. Aiding yourself with a GUI tool like pgAdmin4 check that the target database configurations matches the .env file.  Note: it is not recommend to `postgres` database, instead just create a new one and migrate the data if, by mistake, you inserted the data into `postgres` database.
-- **Cannot launch services with SSL disabled**: Match sure all the configuration values are coherent with each other and that any empty values in the env file use "", because without them the parses will interpret the comment as the value.
+- **Cannot launch services with SSL disabled**: Match sure all the configuration values are coherent with each other and that any empty values in the env file use "", because without them the parser will interpret the comment as the value.

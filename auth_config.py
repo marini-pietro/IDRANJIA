@@ -15,7 +15,7 @@ To avoid boilerplate code, ensure consistency across the project, simplify maint
 Supports .env files via python-dotenv for easy overrides.
 """
 
-
+from traceback import print_exc as traceback_print_exc
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -24,10 +24,14 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from os import environ as os_environ
 
-if load_dotenv():  # Loads .env file if present
-    print("Loaded environment variables from .env file.")
-else: 
-    print("No .env file found.")
+try:
+    if not load_dotenv():  # Loads .env file if present
+        raise FileNotFoundError("No .env file found.")
+    print("Loaded environment variables from .env file in api_config.py")
+except Exception as ex:
+    traceback_print_exc()  # Print full traceback for debugging
+    input("\nClose the program by closing this window.\nInput detection is not possible due to Flask blocking the terminal.")
+    exit(1)
 
 # Authentication server related settings
 AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost") # host to run the auth server on
@@ -60,6 +64,15 @@ JWT_TOKEN_LOCATION = os_environ.get("JWT_TOKEN_LOCATION", "headers,query_string,
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os_environ.get("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 10))) # refresh token expiration time
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3))) # access token expiration time
 
+# Settings for loggin interface
+# N.B: LOG_SERVER_HOST and LOG_SERVER_PORT must be valid and reachable by the auth server for logging to work properly
+# N.B: LOG_DB_PATH must be a valid path where the auth server has write permissions
+LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host in which the log server listens for UDP syslog messages
+LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 514)) # port in which the log server listens for UDP syslog messages
+LOG_DB_PATH: str = os_environ.get("LOG_DB_PATH", None) # path to the SQLite database file for logging (no default parameter is given, becuase if it is missing the interface will create a more accurately named DB file based on runtime data such as timestamps)
+LOG_INTERFACE_MAX_RETRIES: int = int(os_environ.get("LOG_INTERFACE_MAX_RETRIES", 5)) # maximum number of retries for logging interface
+LOG_INTERFACE_RETRY_DELAY: int = int(os_environ.get("LOG_INTERFACE_RETRY_DELAY", 30)) # delay (in seconds) between retries for logging interface
+
 # | Database configuration
 DB_HOST = os_environ.get("DB_HOST", "localhost") # database host
 DB_NAME = os_environ.get("DB_NAME", "idranjia") # database name
@@ -71,7 +84,6 @@ SQLALCHEMY_DATABASE_URI = (
     f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 ) # database URI for SQLAlchemy
 SQLALCHEMY_TRACK_MODIFICATIONS = os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True" # disable/enable flask sql alchemy track modifications (will have performance impact, recommended to keep it disabled)
-
 
 # Miscellaneous settings
 # | Rate limiting settings TODO actually add rate limiting to auth server

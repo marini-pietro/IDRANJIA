@@ -1,3 +1,4 @@
+from traceback import print_exc as traceback_print_exc
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -6,10 +7,14 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from os import environ as os_environ
 
-if load_dotenv():  # Loads .env file if present
+try:
+    if not load_dotenv():  # Loads .env file if present
+        raise FileNotFoundError("No .env file found.")
     print("Loaded environment variables from .env file in api_config.py")
-else: 
-    print("No .env file found.")
+except Exception as ex:
+    traceback_print_exc()  # Print full traceback for debugging
+    input("\nClose the program by closing this window.\nInput detection is not possible due to Flask blocking the terminal.")
+    exit(1)
 
 # Authentication server related settings
 AUTH_SERVER_HOST: str = os_environ.get("AUTH_SERVER_HOST", "localhost")
@@ -26,19 +31,14 @@ PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "backend": default_backend(),
 }
 
-# Log server related settings
-LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host on which the log server listens for incoming syslog messages
-LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 5002)) # port on which the log server listens for incoming syslog messages
-SYSLOG_SEVERITY_MAP: Dict[str, int] = {  # Define a severity map for the syslog server (should not change as it follows syslog standard)
-    "emergency": 0,  # System is unusable
-    "alert": 1,  # Action must be taken immediately
-    "critical": 2,  # Critical conditions
-    "error": 3,  # Error conditions
-    "warning": 4,  # Warning conditions
-    "notice": 5,  # Normal but significant condition
-    "info": 6,  # Informational messages
-    "debug": 7,  # Debug-level messages
-}
+# Settings for loggin interface
+# N.B: LOG_SERVER_HOST and LOG_SERVER_PORT must be valid and reachable by the auth server for logging to work properly
+# N.B: LOG_DB_PATH must be a valid path where the auth server has write permissions
+LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host in which the log server listens for UDP syslog messages
+LOG_SERVER_PORT: int = int(os_environ.get("LOG_SERVER_PORT", 514)) # port in which the log server listens for UDP syslog messages
+LOG_DB_PATH: str = os_environ.get("LOG_DB_PATH", None) # path to the SQLite database file for logging (no default parameter is given, becuase if it is missing the interface will create a more accurately named DB file based on runtime data such as timestamps)
+LOG_INTERFACE_MAX_RETRIES: int = int(os_environ.get("LOG_INTERFACE_MAX_RETRIES", 5)) # maximum number of retries for logging interface
+LOG_INTERFACE_RETRY_DELAY: int = int(os_environ.get("LOG_INTERFACE_RETRY_DELAY", 30)) # delay (in seconds) between retries for logging interface
 
 # API server related settings
 # | API server settings

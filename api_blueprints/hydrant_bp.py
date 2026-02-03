@@ -143,9 +143,10 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} fetched hydrant with id {id_}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="hydrant_fetch",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
         )
 
         # Return the hydrant as a JSON response
@@ -269,9 +270,10 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} updated hydrant with id {id_}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="hydrant_update",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
         )
 
         # Return the response
@@ -342,10 +344,10 @@ class HydrantResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} deleted hydrant with id {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="hydrant_deletion",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": id_}
         )
 
         # Return the response
@@ -502,9 +504,10 @@ class HydrantPostResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} created hydrant with id_ {new_hydrant.id}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="hydrant_creation",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": new_hydrant.id}
         )
 
         # Return the response

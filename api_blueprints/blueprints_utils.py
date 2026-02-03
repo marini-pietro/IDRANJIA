@@ -4,24 +4,21 @@ These functions include data validation, authorization checks, response creation
 database connection handling, logging, and token validation.
 """
 
-import socket
-from datetime import datetime, timezone
+# Standard library imports
 from functools import wraps
 from inspect import isclass as inspect_isclass, signature as inspect_signature
-from os import getpid
-from queue import Queue
-from threading import Lock, Thread
-from typing import Any, Dict, List, Union
-
+from threading import Lock
+from typing import Dict, List, Union
 from cachetools import TTLCache
 from flask import Response, jsonify, make_response, request
 from requests import post as requests_post
 from requests.exceptions import Timeout
 from requests.exceptions import RequestException
 
+# Local imports
+from logging_interface import create_interface
 from api_config import (
     API_SERVER_HOST,
-    API_SERVER_IDENTIFIER,
     API_SERVER_PORT,
     IS_API_SERVER_SSL,
     AUTH_SERVER_HOST,
@@ -31,17 +28,37 @@ from api_config import (
     JWT_QUERY_STRING_NAME,
     JWT_VALIDATION_CACHE_SIZE,
     JWT_VALIDATION_CACHE_TTL,
-    LOG_SERVER_HOST,
-    LOG_SERVER_PORT,
     NOT_AUTHORIZED_MESSAGE,
     RATE_LIMIT_CACHE_SIZE,
     RATE_LIMIT_CACHE_TTL,
     RATE_LIMIT_MAX_REQUESTS,
     ROLES,
     STATUS_CODES,
-    SYSLOG_SEVERITY_MAP,
     URL_PREFIX,
+    LOG_SERVER_HOST,
+    LOG_SERVER_PORT,
+    LOG_DB_PATH,
+    LOG_INTERFACE_MAX_RETRIES,
+    LOG_INTERFACE_RETRY_DELAY,
+    API_SERVER_IDENTIFIER,
 )
+
+# Initialize logging interface
+# Using factory function from logging_interface module
+log_interface = create_interface(
+    syslog_host=LOG_SERVER_HOST,
+    syslog_port=LOG_SERVER_PORT,
+    db_path=LOG_DB_PATH,
+    service_name=API_SERVER_IDENTIFIER,
+    max_retries=LOG_INTERFACE_MAX_RETRIES,
+    retry_delay=LOG_INTERFACE_RETRY_DELAY
+)
+
+print("Logging interface created successfully.\n")
+log_interface.start()  # Start the background thread for the logging interface
+print("Logging interface background thread started successfully.\n")
+
+log = log_interface.log  # Get the log method from the interface for easy use in the API server code
 
 # Authentication related
 # Cache for token validation results
@@ -110,10 +127,10 @@ def jwt_validation_required(func):
 
             except Timeout:
                 log(
-                    log_type="error",
                     message="Request timed out while validating token",
-                    origin_name="JWTValidation",
-                    origin_host=API_SERVER_HOST,
+                    level="ERROR",
+                    source="JWTValidation",
+                    tags={"host": API_SERVER_HOST}
                 )
                 return jsonify({"error": "Login request timed out"}), STATUS_CODES[
                     "gateway_timeout"
@@ -121,10 +138,10 @@ def jwt_validation_required(func):
 
             except RequestException as ex:
                 log(
-                    log_type="error",
                     message=f"Error validating token: {ex}",
-                    origin_name="JWTValidation",
-                    origin_host=API_SERVER_HOST,
+                    level="ERROR",
+                    source="JWTValidation",
+                    tags={"host": API_SERVER_HOST}
                 )
                 return jsonify({
                     "error": "internal server error while validating token"
@@ -289,90 +306,3 @@ def is_rate_limited(client_ip: str) -> bool:
 
         # Check if the rate limit is exceeded
         return client_data["count"] > RATE_LIMIT_MAX_REQUESTS
-
-
-# Log server related
-# Create a queue for log messages
-log_queue = Queue()
-
-
-def log_worker():
-    """
-    Background thread function to process log messages from the queue.
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    while True:
-        # Get a log message from the queue
-        log_data = log_queue.get()
-        if log_data is None:  # Exit signal
-            break
-
-        # Extract log details
-        log_type, message, origin_name, origin_host, message_id, structured_data = (
-            log_data
-        )
-
-        # Get the severity code for the log_type
-        severity = SYSLOG_SEVERITY_MAP.get(
-            log_type, 6
-        )  # Default to 'info' if not found
-
-        # Format the syslog message with the correct priority
-        priority = (1 * 8) + severity  # Assuming facility=1 (user-level messages)
-        syslog_message = (
-            f"<{priority}>1 "  #  # Priority
-            # Timestamp in ISO 8601 format with timezone
-            f"{datetime.now(timezone.utc).isoformat()} "
-            f"{origin_host} "  # Hostname
-            f"{origin_name} "  # App name
-            f"{getpid()} "  # Process ID
-            f"{message_id} "  # Message ID
-            f"{structured_data} "  # Structured Data
-            f"{message}"  # Log message
-        )
-        try:
-            sock.sendto(
-                syslog_message.encode("utf-8"), (LOG_SERVER_HOST, LOG_SERVER_PORT)
-            )
-        except socket.error as ex:
-            print(f"Failed to send log: {ex}")
-
-        # Mark the task as done
-        log_queue.task_done()
-
-
-# Start the background thread
-log_thread = Thread(target=log_worker, daemon=True)
-log_thread.start()
-
-
-def log(
-    log_type: str,
-    message: str,
-    origin_name: str = API_SERVER_IDENTIFIER,
-    origin_host: str = API_SERVER_HOST,
-    message_id: str = "UserAction",
-    structured_data: Union[str, Dict[str, Any]] = "- -",
-) -> None:
-    """
-    Add a log message to the queue for the background thread to process.
-    """
-
-    if isinstance(structured_data, Dict):
-        structured_data = (
-            "["
-            + " ".join([f'{key}="{value}"' for key, value in structured_data.items()])
-            + "]"
-        )
-
-    log_queue.put(
-        (log_type, message, origin_name, origin_host, message_id, structured_data)
-    )
-
-
-# Graceful shutdown function to stop the log thread
-def shutdown_logging():
-    """
-    Signal the log thread to exit and wait for it to finish.
-    """
-    log_queue.put(None)  # Send exit signal

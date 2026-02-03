@@ -130,10 +130,10 @@ class ControlResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} fetched control with id {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="control_fetch",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
         )
 
         # Return the control as a JSON response
@@ -250,10 +250,10 @@ class ControlResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} updated control with id {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="control_update",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
         )
 
         # Return the response
@@ -326,9 +326,10 @@ class ControlResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} deleted control with id {id_}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="control_deletion",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": id_}
         )
 
         # Return the response
@@ -454,10 +455,10 @@ class ControlPostResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} created control with id_ {new_control.id_controllo}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="control_creation",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "control_id": new_control.id_controllo}
         )
 
         # Return the response

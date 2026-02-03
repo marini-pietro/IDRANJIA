@@ -122,10 +122,10 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} fetched operator with cf {CF}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="operator_fetch",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
         )
 
         # Return the operator as a JSON response
@@ -214,10 +214,10 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} updated operator with cf {CF}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="operator_update",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
         )
 
         # Update only provided fields
@@ -295,10 +295,10 @@ class OperatorResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} deleted operator with cf {CF}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="operator_deletion",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_cf": CF}
         )
 
         # Delete the operator
@@ -408,15 +408,15 @@ class OperatorPostResource(Resource):
         # Add the new operator to the database
         db.session.add(new_operator)
         
-		# Commit the changes to the database
+		    # Commit the changes to the database
         db.session.commit()
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} created operator with id {new_operator.id}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="operator_creation",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "operator_id": new_operator.id}
         )
 
         # Return the new operator as a JSON response

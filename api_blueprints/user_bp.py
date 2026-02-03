@@ -154,10 +154,10 @@ class UserResource(Resource):
 
         # Log the retrieval
         log(
-            log_type="info",
-            message=f"UserResource {identity} retrieved user {email} data",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            message=f"User {identity} retrieved user {email} data",
+            level="INFO",
+            source="user_retrieval",
+            tags={"endpoint": request.path, "method": request.method, "requester": identity, "target_user": email}
         )
 
         # Return user data as JSON response
@@ -262,9 +262,10 @@ class UserResource(Resource):
 
         # Log the update
         log(
-            log_type="info",
-            message=f"UserResource {identity} updated user {email}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            message=f"User {identity} updated user {email}",
+            level="INFO",
+            source="user_update",
+            tags={"endpoint": request.path, "method": request.method, "updater": identity, "updated_user": email}
         )
 
         # Return a success response
@@ -323,9 +324,10 @@ class UserResource(Resource):
 
         # Log the deletion
         log(
-            log_type="info",
-            message=f"UserResource {email} deleted user {identity}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            message=f"User {email} deleted user {identity}",
+            level="INFO",
+            source="user_deletion",
+            tags={"endpoint": request.path, "method": request.method, "deleter": email, "deleted_user": identity}
         )
 
         # Return a success response
@@ -463,10 +465,10 @@ class UserPostResource(Resource):
 
         # Log the creation
         log(
-            log_type="info",
-            message=f"UserResource {identity} created user {email}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            message=f"User {identity} created user {email}",
+            level="INFO",
+            source="user_creation",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "email": email}
         )
 
         # Return a success response
@@ -595,9 +597,10 @@ class UserLogin(Resource):
 
             # Log the error
             log(
-                log_type="error",
                 message=f"Authentication service unavailable: {str(ex)}",
-                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+                level="ERROR",
+                source="auth_service",
+                tags={"endpoint": request.path, "method": request.method}
             )
 
             # Return error response
@@ -617,11 +620,14 @@ class UserLogin(Resource):
             )
 
         if response.status_code == STATUS_CODES["unauthorized"]: # Invalid credentials
-            log( # Log the failed login attempt
-                log_type="warning",
+            # Log the failed login attempt
+            log(
                 message=f"Failed login attempt for email: {email}",
-                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+                level="WARNING",
+                source="user_login",
+                tags={"endpoint": request.path, "method": request.method, "email": email}
             )
+
             # Return unauthorized response
             return create_response(
                 message={"error": "Invalid credentials"},
@@ -629,11 +635,14 @@ class UserLogin(Resource):
             )
 
         elif response.status_code == STATUS_CODES["bad_request"]: # Bad request
-            log( # Log the bad request
-                log_type="error",
+            # Log the bad request
+            log(
                 message=f"Bad request during login for email: {email}",
-                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+                level="ERROR",
+                source="user_login",
+                tags={"endpoint": request.path, "method": request.method, "email": email}
             )
+
             # Return bad request response
             return create_response(
                 message={"error": "Bad request"},
@@ -641,11 +650,14 @@ class UserLogin(Resource):
             )
 
         elif response.status_code == STATUS_CODES["internal_error"]: # Internal server error
-            log( # Log the internal error
-                log_type="error",
+            # Log the internal error
+            log(
                 message=f"Internal error during login for email: {email}",
-                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+                level="ERROR",
+                source="user_login",
+                tags={"endpoint": request.path, "method": request.method, "email": email}
             )
+
             # Return internal error response
             return create_response(
                 message={"error": "Internal error"},
@@ -653,14 +665,14 @@ class UserLogin(Resource):
             )
 
         else:
-            log( # Log any unexpected errors
-                log_type="error",
-                message=(
-                    f"Unexpected error during login for email: {email} "
-                    f"with status code: {response.status_code}"
-                ),
-                structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+            # Log any unexpected errors
+            log(
+                message=f"Unexpected error during login for email: {email} with status code: {response.status_code}",
+                level="ERROR",
+                source="user_login",
+                tags={"endpoint": request.path, "method": request.method, "email": email, "status_code": response.status_code}
             )
+
             # Return generic internal error response
             return create_response(
                 message={"error": "Unexpected error during login"},

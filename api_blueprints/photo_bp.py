@@ -140,9 +140,10 @@ class PhotoResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} fetched photos with hydrant id {hydrant_id}",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="photo_fetch",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": hydrant_id}
         )
 
         # Return the photos as a JSON response
@@ -246,10 +247,10 @@ class PhotoResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} updated photo with id_ {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="photo_update",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "photo_id": id_}
         )
 
         # Return the response
@@ -318,10 +319,10 @@ class PhotoResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} deleted photo with id_ {id_}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="photo_deletion",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "photo_id": id_}
         )
 
         # Return the response
@@ -452,10 +453,10 @@ class PhotoPostResource(Resource):
 
         # Log the action
         log(
-            log_type="info",
             message=f"User {identity} created photo with hydrant id_ {hydrant_id}",
-            message_id="UserAction",
-            structured_data=f"[endpoint='{request.path} verb='{request.method}']",
+            level="INFO",
+            source="photo_creation",
+            tags={"endpoint": request.path, "method": request.method, "identity": identity, "hydrant_id": hydrant_id}
         )
 
         # Return the response

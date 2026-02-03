@@ -12,6 +12,7 @@ from os.path import dirname as os_path_dirname
 from os.path import abspath as os_path_abspath
 from os import system as os_system_cmd
 from importlib import import_module
+from venv import logger
 from flask import Flask, jsonify, request, Blueprint
 from flask_jwt_extended import JWTManager
 from flask_marshmallow import Marshmallow
@@ -527,11 +528,20 @@ def _sanitize_callback(callback: object, max_len: int = 200, fp_len: int = 12):
 def custom_unauthorized_response(callback):
     # sanitize and fingerprint the callback before logging
     cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
+    
+    # Use the SQLiteUDPLogger instance
     log(
-        log_type="error",
-        message=f"api reached with missing token, callback: {cb_short} [fp:{cb_fp}]",
-        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+        message=f"API reached with missing token, callback: {cb_short} [fp:{cb_fp}]",
+        level="ERROR",
+        tags={
+            "host": API_SERVER_HOST,
+            "port": API_SERVER_PORT,
+            "jwt_error": "missing_token"
+        },
+        source="jwt-unauthorized-loader",
+        priority=1  # High priority for security/auth failures
     )
+    
     return (
         jsonify(INVALID_JWT_MESSAGES["missing_token"][0]),
         INVALID_JWT_MESSAGES["missing_token"][1],
@@ -543,15 +553,25 @@ def custom_unauthorized_response(callback):
 def custom_invalid_token_response(callback):
     # sanitize and fingerprint the callback before logging
     cb_short, cb_fp = _sanitize_callback(callback) # get sanitized callback and fingerprint
+    
+    # Use the SQLiteUDPLogger instance
     log(
-        log_type="error",
-        message=f"api reached with invalid token, callback: {cb_short} [fp:{cb_fp}]",
-        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+        message=f"API reached with invalid token, callback: {cb_short} [fp:{cb_fp}]",
+        level="ERROR",
+        tags={
+            "host": API_SERVER_HOST,
+            "port": API_SERVER_PORT,
+            "jwt_error": "invalid_token"
+        },
+        source="jwt-invalid-token-loader",
+        priority=1  # High priority for security/auth failures
     )
+    
     return (
         jsonify(INVALID_JWT_MESSAGES["invalid_token"][0]),
         INVALID_JWT_MESSAGES["invalid_token"][1],
     )
+
 
 
 # Helper function to summarize JWT headers and payloads in logs
@@ -577,22 +597,22 @@ def _summarize(d: dict, keys: tuple):
 # Handle expired tokens
 @jwt.expired_token_loader
 def custom_expired_token_response(jwt_header, jwt_payload):
-
     # summarize header and payload for logging
     header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
     )
-
+    
     log(
-        log_type="error",
         message=(
             "API reached with expired JWT. "
             f"Header summary: {header_summary}; Payload summary: {payload_summary}"
         ),
-        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+        level="ERROR",
+        source="custom_expired_token_response",
+        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
     )
-
+    
     return (
         jsonify(INVALID_JWT_MESSAGES["expired_token"][0]),
         INVALID_JWT_MESSAGES["expired_token"][1],
@@ -602,22 +622,22 @@ def custom_expired_token_response(jwt_header, jwt_payload):
 # Handle revoked tokens (if applicable)
 @jwt.revoked_token_loader
 def custom_revoked_token_response(jwt_header, jwt_payload):
-
     # summarize header and payload for logging
     header_summary = _summarize(jwt_header, ("alg", "typ", "kid", "jti"))
     payload_summary = _summarize(
         jwt_payload, ("sub", "identity", "jti", "exp", "role", "iss", "aud")
     )
-
+    
     log(
-        log_type="error",
         message=(
             "API reached with revoked JWT. "
             f"Header summary: {header_summary}; Payload summary: {payload_summary}"
         ),
-        structured_data=f"[host: {API_SERVER_HOST}, port: {API_SERVER_PORT}]",
+        level="ERROR",
+        source="custom_revoked_token_response",
+        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
     )
-
+    
     return (
         jsonify(INVALID_JWT_MESSAGES["revoked_token"][0]),
         INVALID_JWT_MESSAGES["revoked_token"][1],
@@ -662,9 +682,10 @@ if __name__ == "__main__":
     except Exception as ex:
         # Log the error and exit if the directory is missing or inaccessible
         log(
-            log_type="error",
             message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {ex}",
-            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            level="ERROR",
+            source="blueprint_loader",
+            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "blueprints_dir": blueprints_dir}
         )
         # Also print to console for immediate feedback
         print(f"ERROR: api_blueprints directory not found or inaccessible: {ex}")
@@ -675,9 +696,10 @@ if __name__ == "__main__":
     if not python_files:
         # if no Python files found, log and exit
         log(
-            log_type="error",
             message=f"No Python files found in '{blueprints_dir}'. At least one file is required.",
-            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+            level="ERROR", 
+            source="blueprint_loader",
+            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "blueprints_dir": blueprints_dir}
         )
         print(
             f"ERROR: No Python files found in {blueprints_dir}; add at least one blueprint file."
@@ -698,11 +720,10 @@ if __name__ == "__main__":
             module = import_module(full_module_name)
         except Exception as ex:
             log(
-                log_type="error",
-                message=(
-                    f"Failed to import blueprint module '{full_module_name}': {ex}"
-                ),
-                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                message=f"Failed to import blueprint module '{full_module_name}': {ex}",
+                level="ERROR",
+                source="blueprint_loader", 
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name}
             )
             print(f"Skipping {full_module_name}: import failed: {ex}")
             continue
@@ -726,9 +747,10 @@ if __name__ == "__main__":
         if not found_blueprints:
             # If the module doesn't export a Blueprint, log a warning and continue
             log(
-                log_type="warning",
-                message=(f"No Flask Blueprint found in module '{full_module_name}'."),
-                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                message=f"No Flask Blueprint found in module '{full_module_name}'.",
+                level="WARNING",
+                source="blueprint_loader",
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name}
             )
             print(f"No blueprint found in {full_module_name}; skipping.")
             continue
@@ -743,11 +765,10 @@ if __name__ == "__main__":
                 )
             except Exception as ex: 
                 log(
-                    log_type="error",
-                    message=(
-                        f"Failed to register blueprint '{full_module_name}.{attr_name}': {ex}"
-                    ),
-                    structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                    message=f"Failed to register blueprint '{full_module_name}.{attr_name}': {ex}",
+                    level="ERROR",
+                    source="blueprint_loader",
+                    tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "module": full_module_name, "attribute": attr_name}
                 ) # Log the error
                 print(f"Failed to register {full_module_name}.{attr_name}: {ex}") # Print to console for immediate feedback
 
@@ -758,9 +779,10 @@ if __name__ == "__main__":
         except OperationalError as e:
             # Log a clear, structured message and exit cleanly so startup doesn't crash with an opaque traceback
             log(
-                log_type="error",
                 message=f"Database connection failed during create_all: {e}",
-                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                level="ERROR",
+                source="database_init",
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
             )
             print(
                 f"ERROR: cannot connect to the database. Check Postgres is running and SQLALCHEMY_DATABASE_URI in config.\n Current SQLALCHEMY_DATABASE_URI={SQLALCHEMY_DATABASE_URI}"
@@ -769,9 +791,10 @@ if __name__ == "__main__":
 
     # Log the server start
     log(
-        log_type="info",
         message="API server started",
-        structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+        level="INFO",
+        source="server_startup",
+        tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
     )
 
     # Start the server
@@ -779,11 +802,11 @@ if __name__ == "__main__":
       
         # Log server start event
         log(
-            log_type="info",
             message=f"API server started with Flask built-in server with debug mode set to {API_SERVER_DEBUG_MODE}",
-            message_id="ServerAction",
-            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
-        )      
+            level="INFO",
+            source="server_startup",
+            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+        )    
 
         # Start the server with Flask's built-in server
         if (API_SERVER_SSL_CERT == "") != (API_SERVER_SSL_KEY == ""):
@@ -800,20 +823,20 @@ if __name__ == "__main__":
 
         # Log server stop event only if run() returns (which is rare, usually only on shutdown)
         log(
-            log_type="info",
-            message=f"API server stopped (Flask run() exited)",
-            message_id="ServerAction",
-            structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
-        )        
+            message="API server stopped (Flask run() exited)",
+            level="INFO",
+            source="server_shutdown",
+            tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+        )    
 
     else:
         try:
             # Log server start event
             log(
-                log_type="info",
                 message="API server started with waitress-serve",
-                message_id="ServerAction",
-                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                level="INFO",
+                source="server_startup",
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
             )
 
             # Start the server with waitress
@@ -827,16 +850,16 @@ if __name__ == "__main__":
 
             # Log shutdown event
             log(
-                log_type="info",
                 message=f"API server started with waitress shutdown with code {exit_code}",
-                message_id="ServerAction",
-                structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
+                level="INFO",
+                source="server_shutdown",
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT, "exit_code": exit_code}
             )
 
-        except Exception as exc:
-          log(
-              log_type="error",
-              message=f"Exception while starting API server with waitress-serve: {exc}",
-              message_id="ServerAction",
-              structured_data=f"[host='{API_SERVER_HOST}' port='{API_SERVER_PORT}']",
-          )
+        except Exception as ex:
+            log(
+                message=f"Exception while starting API server with waitress-serve: {ex}",
+                level="ERROR",
+                source="server_startup",
+                tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT}
+            )

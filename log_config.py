@@ -1,11 +1,15 @@
-from typing import Dict
+from traceback import print_exc as traceback_print_exc
 from dotenv import load_dotenv
 from os import environ as os_environ
 
-if load_dotenv():  # Loads .env file if present
-    print("Loaded environment variables from .env file in log_config.py")
-else: 
-    print("No .env file found.")
+try:
+    if not load_dotenv():  # Loads .env file if present
+        raise FileNotFoundError("No .env file found.")
+    print("Loaded environment variables from .env file in api_config.py")
+except Exception as ex:
+    traceback_print_exc()  # Print full traceback for debugging
+    input("\nClose the program by closing this window.\nInput detection is not possible due to Flask blocking the terminal.")
+    exit(1)
 
 # Log server related settings
 LOG_SERVER_HOST: str = os_environ.get("LOG_SERVER_HOST", "localhost") # host on which the log server listens for incoming syslog messages

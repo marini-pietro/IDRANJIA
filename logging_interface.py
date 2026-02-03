@@ -3,6 +3,7 @@ Complete SQLite-based logger with UDP syslog forwarding.
 Aimed at production use in very low-volume architectures.
 """
 
+# Standard library imports
 import sqlite3
 import json
 import socket
@@ -11,7 +12,6 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-
 
 class SQLiteUDPLogger:
     """
@@ -22,9 +22,9 @@ class SQLiteUDPLogger:
     def __init__(
         self,
         syslog_host: str,
-        service_name: str,  # name of the service using the interface object
+        service_name: str = "unknown-service",  # name of the service using the interface object
         syslog_port: int = 514,  # standard syslog UDP port as default
-        db_path: str = "./logs.db", # path to SQLite database file
+        db_path: str = None, # path to SQLite database file
         max_retries: int = 5, # max number of retries to send a log message via UDP
         retry_delay: int = 30, # delay between retries in seconds
     ):
@@ -34,6 +34,10 @@ class SQLiteUDPLogger:
         self.service_name = service_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+
+        # If no explicit DB path, create one with timestamp and service name
+        # Couldn't be in default params because datetime.now() needs to be called at init time and service_name is needed
+        if db_path is None: db_path = f"idranjia-logs/{datetime.now(datetime.timezone.utc)}-{self.service_name}-logs.db"
 
         # Ensure database directory exists
         db_path_obj = Path(db_path)
@@ -129,7 +133,7 @@ class SQLiteUDPLogger:
         priority: int = 0,
     ):
         """
-        Store a log message in SQLite.
+        Store a log message in SQLite.  
         This is synchronous and immediately durable.
         """
         log_entry = {
@@ -296,11 +300,13 @@ class SQLiteUDPLogger:
                 )
 
             self.stats["failed"] += 1
-            print(f"Failed to send log #{log_id}: {ex}")
+            print(f"Failed to send log with id {log_id}: {ex}")
             return False
 
     def _sender_loop(self):
-        """Background thread that sends unsent logs"""
+        """
+        Background thread that sends unsent logs.
+        """
         print(f"Log sender thread started for service '{self.service_name}'")
 
         while self.running:
@@ -309,7 +315,7 @@ class SQLiteUDPLogger:
                 unsent_logs = self._get_unsent_logs()
 
                 if unsent_logs:
-                    print(f"Found {len(unsent_logs)} unsent logs")
+                    print(f"Logging background thread found {len(unsent_logs)} unsent logs")
 
                     # Send each log
                     for log in unsent_logs:
@@ -440,6 +446,7 @@ class SQLiteUDPLogger:
         limit: int = 100,
     ) -> List[Dict]:
         """Query logs with filters"""
+        
         query = "SELECT * FROM logs WHERE 1=1"
         params = []
 
@@ -481,13 +488,23 @@ class SQLiteUDPLogger:
 
 
 # Factory function for easy integration
-def create_logger(config: Dict[str, Any]) -> SQLiteUDPLogger:
-    """Create logger from configuration"""
+def create_interface(syslog_host, syslog_port=None, service_name=None, max_retries=None, retry_delay=None, db_path=None) -> SQLiteUDPLogger:
+    """
+    Creates instance of logger interface with given configuration.
+    """
+
+    print("Attempting to create logging interface with:")
+    print(f"syslog_host: {syslog_host}")
+    print(f"syslog_port: {syslog_port}")
+    print(f"service_name: {service_name}\n")
+
+    # Defaults are already handled in SQLiteUDPLogger init
+    # so just pass None for missing params
     return SQLiteUDPLogger(
-        syslog_host=config["syslog_host"],
-        syslog_port=config.get("syslog_port", 514),
-        db_path=config.get("db_path", "/var/log/hydrant/logs.db"),
-        service_name=config.get("service_name", "hydrant-service"),
-        max_retries=config.get("max_retries", 5),
-        retry_delay=config.get("retry_delay", 30),
+        syslog_host=syslog_host,
+        syslog_port=syslog_port,
+        db_path=db_path,
+        service_name=service_name,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
     )

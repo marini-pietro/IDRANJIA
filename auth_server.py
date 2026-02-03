@@ -21,7 +21,8 @@ from flask_jwt_extended import (
 )
 
 # Local imports
-from api_blueprints.blueprints_utils import log, is_rate_limited
+from api_blueprints.blueprints_utils import is_rate_limited
+from logging_interface import create_interface
 from models import db, User
 from auth_config import (
     AUTH_SERVER_HOST,
@@ -47,6 +48,11 @@ from auth_config import (
     SQL_PATTERN,
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
+    LOG_SERVER_HOST,
+    LOG_SERVER_PORT,
+    LOG_DB_PATH,
+    LOG_INTERFACE_MAX_RETRIES,
+    LOG_INTERFACE_RETRY_DELAY,
 )
 
 # Initialize Flask app
@@ -72,6 +78,23 @@ db.init_app(auth_api)
 # Initialize JWT manager
 jwt = JWTManager(auth_api)
 
+# Initialize logging interface
+# Using factory function from logging_interface module
+log_interface = create_interface(
+    syslog_host=LOG_SERVER_HOST,
+    syslog_port=LOG_SERVER_PORT,
+    db_path=LOG_DB_PATH,
+    service_name=AUTH_SERVER_IDENTIFIER,
+    max_retries=LOG_INTERFACE_MAX_RETRIES,
+    retry_delay=LOG_INTERFACE_RETRY_DELAY
+)
+
+print("Logging interface created successfully.\n")
+log_interface.start() # Start the background thread for the logging interface
+print("Logging interface background thread started successfully.\n")
+
+log = log_interface.log # Get the log method from the interface for easy use in the auth server code
+
 # Check JWT secret key length
 # encode to utf-8 to get byte length and check if it's at least 32 bytes (256 bits)
 if len(JWT_SECRET_KEY.encode("utf-8")) < 32:
@@ -87,10 +110,10 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
   except ValueError:
     # stored_password doesn't have the expected "salt:hash" format
     log(
-      log_type="warning",
-      message="Stored password format invalid",
-      origin_name=AUTH_SERVER_IDENTIFIER,
-      origin_host=AUTH_SERVER_HOST,
+        message="Stored password format invalid",
+        level="WARNING",
+        source="password_validation",
+        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
     )
     return False
 
@@ -101,10 +124,10 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
   except (BinasciiError, ValueError):
     # base64 decoding failed (malformed salt or hash)
     log(
-      log_type="warning",
-      message="Base64 decoding failed for stored password components",
-      origin_name=AUTH_SERVER_IDENTIFIER,
-      origin_host=AUTH_SERVER_HOST,
+        message="Base64 decoding failed for stored password components",
+        level="WARNING",
+        source="password_decoding",
+        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
     )
     return False
 
@@ -129,10 +152,10 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
   except Exception as exc:
     # Catch-all for unexpected errors; log for troubleshooting
     log(
-      log_type="error",
-      message=f"Unexpected error during password verification: {exc}",
-      origin_name=AUTH_SERVER_IDENTIFIER,
-      origin_host=AUTH_SERVER_HOST,
+        message=f"Unexpected error during password verification: {exc}",
+        level="ERROR",
+        source="password_verification",
+        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
     )
     return False
 
@@ -285,11 +308,10 @@ def login():
 
         # Logging the successful login event
         log(
-            log_type="info",
             message=f"User {email} logged in",
-            origin_name=AUTH_SERVER_IDENTIFIER,
-            origin_host=AUTH_SERVER_HOST,
-            structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+            level="INFO",
+            source="user_login",
+            tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "endpoint": request.path, "method": request.method, "email": email}
         )
 
         # Return the tokens
@@ -377,11 +399,10 @@ def refresh():
 
     # Logging the token refresh event
     log(
-        log_type="info",
         message=f"Access token refreshed for identity {identity}",
-        origin_name=AUTH_SERVER_IDENTIFIER,
-        origin_host=AUTH_SERVER_HOST,
-        structured_data=f"[endpoint='{request.path}' verb='{request.method}']",
+        level="INFO",
+        source="token_refresh",
+        tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "endpoint": request.path, "method": request.method, "identity": identity}
     )
     
     return jsonify({"access_token": new_access_token}), STATUS_CODES["ok"]
@@ -421,15 +442,13 @@ if __name__ == "__main__":
         try:
             # Log server start event
             log(
-                log_type="info",
                 message=f"Auth server starting with Flask built-in server with debug mode set to {AUTH_SERVER_DEBUG_MODE}",
-                origin_name=AUTH_SERVER_IDENTIFIER,
-                origin_host=AUTH_SERVER_HOST,
-                message_id="ServerAction",
-                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+                level="INFO",
+                source="auth_server_startup",
+                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
             )
             
-			# Start the server with Flask's built-in server
+			      # Start the server with Flask's built-in server
             auth_api.run(
                 host=AUTH_SERVER_HOST,
                 port=AUTH_SERVER_PORT,
@@ -441,21 +460,17 @@ if __name__ == "__main__":
             
             # Log server stop event only if run() returns (which is rare, usually only on shutdown)
             log(
-                log_type="info",
-                message=f"Auth server stopped (Flask run() exited)",
-                origin_name=AUTH_SERVER_IDENTIFIER,
-                origin_host=AUTH_SERVER_HOST,
-                message_id="ServerAction",
-                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+                message="Auth server stopped (Flask run() exited)",
+                level="INFO",
+                source="auth_server_shutdown",
+                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
             )
         except Exception as ex:
             log(
-                log_type="error",
                 message=f"Exception while starting auth server with Flask: {ex}",
-                origin_name=AUTH_SERVER_IDENTIFIER,
-                origin_host=AUTH_SERVER_HOST,
-                message_id="ServerAction",
-                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+                level="ERROR",
+                source="auth_server_startup",
+                tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
             )
 
 	# Use waitress-serve in production (i.e. AUTH_SERVER_DEBUG_MODE=False)
@@ -463,15 +478,13 @@ if __name__ == "__main__":
       try:
           # Log server start event
           log(
-                log_type="info",
-                message="Auth server starting with waitress-serve",
-                origin_name=AUTH_SERVER_IDENTIFIER,
-                origin_host=AUTH_SERVER_HOST,
-                message_id="ServerAction",
-                structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+              message="Auth server starting with waitress-serve",
+              level="INFO",
+              source="auth_server_startup",
+              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
           )
 
-		  # Start the server with waitress-serve            
+		      # Start the server with waitress-serve            
           exit_code = os_system_cmd(
               f"waitress-serve "
               f"--host={AUTH_SERVER_HOST} "
@@ -480,21 +493,17 @@ if __name__ == "__main__":
               f"auth_server:auth_api"
           )
           
-		  # Log shutdown event
+		      # Log shutdown event
           log(
-              log_type="info",
               message=f"Auth server started with waitress shutdown with code {exit_code}",
-              origin_name=AUTH_SERVER_IDENTIFIER,
-              origin_host=AUTH_SERVER_HOST,
-              message_id="ServerAction",
-              structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
-         )
-      except Exception as exc:
+              level="INFO",
+              source="auth_server_shutdown",
+              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER, "exit_code": exit_code}
+          )
+      except Exception as ex:
           log(
-              log_type="error",
-              message=f"Exception while starting auth server with waitress-serve: {exc}",
-              origin_name=AUTH_SERVER_IDENTIFIER,
-              origin_host=AUTH_SERVER_HOST,
-              message_id="ServerAction",
-              structured_data=f"[host='{AUTH_SERVER_HOST}' port='{AUTH_SERVER_PORT}']",
+              message=f"Exception while starting auth server with waitress-serve: {ex}",
+              level="ERROR",
+              source="auth_server_startup",
+              tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT, "origin": AUTH_SERVER_IDENTIFIER}
           )
