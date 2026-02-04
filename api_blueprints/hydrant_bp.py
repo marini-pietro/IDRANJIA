@@ -147,7 +147,7 @@ class HydrantResource(Resource):
         log(
             message=f"User {identity} fetched hydrant with id {id_}",
             level="INFO",
-            source="hydrant_fetch",
+            message_id="HYDGET",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -281,7 +281,7 @@ class HydrantResource(Resource):
         log(
             message=f"User {identity} updated hydrant with id {id_}",
             level="INFO",
-            source="hydrant_update",
+            message_id="HYDPATCH",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -360,7 +360,7 @@ class HydrantResource(Resource):
         log(
             message=f"User {identity} deleted hydrant with id {id_}",
             level="INFO",
-            source="hydrant_deletion",
+            message_id="HYDDEL",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -525,7 +525,7 @@ class HydrantPostResource(Resource):
         log(
             message=f"User {identity} created hydrant with id_ {new_hydrant.id}",
             level="INFO",
-            source="hydrant_creation",
+            message_id="HYDPOST",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,

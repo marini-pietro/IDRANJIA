@@ -114,7 +114,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
         log(
             message="Stored password format invalid",
             level="WARNING",
-            source="password_validation",
+            message_id="PWDFMTERR",
             sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
         )
         return False
@@ -128,7 +128,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
         log(
             message="Base64 decoding failed for stored password components",
             level="WARNING",
-            source="password_decoding",
+            message_id="PWDDECOERR",
             sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
         )
         return False
@@ -156,7 +156,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
         log(
             message=f"Unexpected error during password verification: {exc}",
             level="ERROR",
-            source="password_verification",
+            message_id="PWDVERERR",
             sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
         )
         return False
@@ -316,7 +316,7 @@ def login():
         log(
             message=f"User {email} logged in",
             level="INFO",
-            source="user_login",
+            message_id="LOGIN",
             sd_tags={
                 "host": AUTH_SERVER_HOST,
                 "port": AUTH_SERVER_PORT,
@@ -413,7 +413,7 @@ def refresh():
     log(
         message=f"Access token refreshed for identity {identity}",
         level="INFO",
-        source="token_refresh",
+        message_id="REFTOK",
         sd_tags={
             "host": AUTH_SERVER_HOST,
             "port": AUTH_SERVER_PORT,
@@ -462,7 +462,7 @@ if __name__ == "__main__":
             log(
                 message=f"Auth server starting with Flask built-in server with debug mode set to {AUTH_SERVER_DEBUG_MODE}",
                 level="INFO",
-                source="auth_server_startup",
+                message_id="SRVSTART",
                 sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
 
@@ -482,14 +482,14 @@ if __name__ == "__main__":
             log(
                 message="Auth server stopped (Flask run() exited)",
                 level="INFO",
-                source="auth_server_shutdown",
+                message_id="SRVSTOP",
                 sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
         except Exception as ex:
             log(
                 message=f"Exception while starting auth server with Flask: {ex}",
                 level="ERROR",
-                source="auth_server_startup",
+                message_id="SRVSTARTERR",
                 sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
 
@@ -500,7 +500,7 @@ if __name__ == "__main__":
             log(
                 message="Auth server starting with waitress-serve",
                 level="INFO",
-                source="auth_server_startup",
+                message_id="SRVSTART",
                 sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )
 
@@ -517,7 +517,7 @@ if __name__ == "__main__":
             log(
                 message=f"Auth server started with waitress shutdown with code {exit_code}",
                 level="INFO",
-                source="auth_server_shutdown",
+                message_id="SRVSTOP",
                 sd_tags={
                     "host": AUTH_SERVER_HOST,
                     "port": AUTH_SERVER_PORT,
@@ -528,6 +528,6 @@ if __name__ == "__main__":
             log(
                 message=f"Exception while starting auth server with waitress-serve: {ex}",
                 level="ERROR",
-                source="auth_server_startup",
+                message_id="SRVSTARTERR",
                 sd_tags={"host": AUTH_SERVER_HOST, "port": AUTH_SERVER_PORT},
             )

@@ -134,7 +134,7 @@ class ControlResource(Resource):
         log(
             message=f"User {identity} fetched control with id {id_}",
             level="INFO",
-            source="control_fetch",
+            message_id="CTRLGET",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -261,7 +261,7 @@ class ControlResource(Resource):
         log(
             message=f"User {identity} updated control with id {id_}",
             level="INFO",
-            source="control_update",
+            message_id="CTRLPATCH",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -342,7 +342,7 @@ class ControlResource(Resource):
         log(
             message=f"User {identity} deleted control with id {id_}",
             level="INFO",
-            source="control_deletion",
+            message_id="CTRLDEL",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -476,7 +476,7 @@ class ControlPostResource(Resource):
         log(
             message=f"User {identity} created control with id_ {new_control.id_controllo}",
             level="INFO",
-            source="control_creation",
+            message_id="CTRLPOST",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,

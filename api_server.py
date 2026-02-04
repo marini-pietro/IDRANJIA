@@ -543,9 +543,8 @@ def custom_unauthorized_response(callback):
         sd_tags={
             "host": API_SERVER_HOST,
             "port": API_SERVER_PORT,
-            "jwt_error": "missing_token",
         },
-        source="jwt-unauthorized-loader",
+        message_id="MSNTOK",
         priority=1,  # High priority for security/auth failures
     )
 
@@ -570,9 +569,8 @@ def custom_invalid_token_response(callback):
         sd_tags={
             "host": API_SERVER_HOST,
             "port": API_SERVER_PORT,
-            "jwt_error": "invalid_token",
         },
-        source="jwt-invalid-token-loader",
+        message_id="INVTOK",
         priority=1,  # High priority for security/auth failures
     )
 
@@ -617,8 +615,8 @@ def custom_expired_token_response(jwt_header, jwt_payload):
             f"Header summary: {header_summary}; Payload summary: {payload_summary}"
         ),
         level="ERROR",
-        source="custom_expired_token_response",
         sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
+        message_id="EXPTOK",
     )
 
     return (
@@ -642,7 +640,7 @@ def custom_revoked_token_response(jwt_header, jwt_payload):
             f"Header summary: {header_summary}; Payload summary: {payload_summary}"
         ),
         level="ERROR",
-        source="custom_revoked_token_response",
+        message_id="REVTOK",
         sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
     )
 
@@ -692,7 +690,7 @@ if __name__ == "__main__":
         log(
             message=f"Blueprints directory '{blueprints_dir}' not found or inaccessible: {ex}",
             level="ERROR",
-            source="blueprint_loader",
+            message_id="BPLOADERR",
             sd_tags={
                 "host": API_SERVER_HOST,
                 "port": API_SERVER_PORT,
@@ -710,7 +708,7 @@ if __name__ == "__main__":
         log(
             message=f"No Python files found in '{blueprints_dir}'. At least one file is required.",
             level="ERROR",
-            source="blueprint_loader",
+            message_id="BPLOADERR",
             sd_tags={
                 "host": API_SERVER_HOST,
                 "port": API_SERVER_PORT,
@@ -738,7 +736,7 @@ if __name__ == "__main__":
             log(
                 message=f"Failed to import blueprint module '{full_module_name}': {ex}",
                 level="ERROR",
-                source="blueprint_loader",
+                message_id="BPLOADERR",
                 sd_tags={
                     "host": API_SERVER_HOST,
                     "port": API_SERVER_PORT,
@@ -769,7 +767,7 @@ if __name__ == "__main__":
             log(
                 message=f"No Flask Blueprint found in module '{full_module_name}'.",
                 level="WARNING",
-                source="blueprint_loader",
+                message_id="BPLOADWARN",
                 sd_tags={
                     "host": API_SERVER_HOST,
                     "port": API_SERVER_PORT,
@@ -793,7 +791,7 @@ if __name__ == "__main__":
                 log(
                     message=f"Failed to register blueprint '{full_module_name}.{attr_name}': {ex}",
                     level="ERROR",
-                    source="blueprint_loader",
+                    message_id="BPLOADERR",
                     sd_tags={
                         "host": API_SERVER_HOST,
                         "port": API_SERVER_PORT,
@@ -814,7 +812,7 @@ if __name__ == "__main__":
             log(
                 message=f"Database connection failed during create_all: {e}",
                 level="ERROR",
-                source="database_init",
+                message_id="DBCONNERR",
                 sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )
             print(
@@ -829,7 +827,7 @@ if __name__ == "__main__":
         log(
             message=f"API server started with Flask built-in server with debug mode set to {API_SERVER_DEBUG_MODE}",
             level="INFO",
-            source="server_startup",
+            message_id="SRVSTART",
             sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
         )
 
@@ -854,7 +852,7 @@ if __name__ == "__main__":
         log(
             message="API server stopped (Flask run() exited)",
             level="INFO",
-            source="server_shutdown",
+            message_id="SRVSTOP",
             sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
         )
 
@@ -864,7 +862,7 @@ if __name__ == "__main__":
             log(
                 message="API server started with waitress-serve",
                 level="INFO",
-                source="server_startup",
+                message_id="SRVSTART",
                 sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )
 
@@ -881,7 +879,7 @@ if __name__ == "__main__":
             log(
                 message=f"API server started with waitress shutdown with code {exit_code}",
                 level="INFO",
-                source="server_shutdown",
+                message_id="SRVSTOP",
                 sd_tags={
                     "host": API_SERVER_HOST,
                     "port": API_SERVER_PORT,
@@ -893,6 +891,6 @@ if __name__ == "__main__":
             log(
                 message=f"Exception while starting API server with waitress-serve: {ex}",
                 level="ERROR",
-                source="server_startup",
+                message_id="SRVSTARTERR",
                 sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
             )

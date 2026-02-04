@@ -131,7 +131,7 @@ def jwt_validation_required(func):
                 log(
                     message="Request timed out while validating token",
                     level="ERROR",
-                    source="JWTValidation",
+                    message_id="TOKVALERR",
                     sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
                 )
                 return (
@@ -143,7 +143,7 @@ def jwt_validation_required(func):
                 log(
                     message=f"Error validating token: {ex}",
                     level="ERROR",
-                    source="JWTValidation",
+                    message_id="TOKVALERR",
                     sd_tags={"host": API_SERVER_HOST, "port": API_SERVER_PORT},
                 )
                 return (

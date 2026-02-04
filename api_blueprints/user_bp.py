@@ -158,9 +158,9 @@ class UserResource(Resource):
 
         # Log the retrieval
         log(
-            message=f"User {identity} retrieved user {email} data",
+            message=f"User {identity} fetched user {email} data",
             level="INFO",
-            source="user_retrieval",
+            message_id="USRGET",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -275,7 +275,7 @@ class UserResource(Resource):
         log(
             message=f"User {identity} updated user {email}",
             level="INFO",
-            source="user_update",
+            message_id="USRPATCH",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -344,7 +344,7 @@ class UserResource(Resource):
         log(
             message=f"User {email} deleted user {identity}",
             level="INFO",
-            source="user_deletion",
+            message_id="USRDEL",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -490,7 +490,7 @@ class UserPostResource(Resource):
         log(
             message=f"User {identity} created user {email}",
             level="INFO",
-            source="user_creation",
+            message_id="USRPOST",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -629,7 +629,7 @@ class UserLogin(Resource):
             log(
                 message=f"Authentication service unavailable: {str(ex)}",
                 level="ERROR",
-                source="auth_service",
+                message_id="AUTHSRVUNAVAIL",
                 sd_tags={"endpoint": request.path, "method": request.method},
             )
 
@@ -652,7 +652,7 @@ class UserLogin(Resource):
             log(
                 message=f"Failed login attempt for email: {email}",
                 level="WARNING",
-                source="user_login",
+                message_id="LOGINFAIL",
                 sd_tags={
                     "endpoint": request.path,
                     "method": request.method,
@@ -671,7 +671,7 @@ class UserLogin(Resource):
             log(
                 message=f"Bad request during login for email: {email}",
                 level="ERROR",
-                source="user_login",
+                message_id="LOGINBADREQ",
                 sd_tags={
                     "endpoint": request.path,
                     "method": request.method,
@@ -692,7 +692,7 @@ class UserLogin(Resource):
             log(
                 message=f"Internal error during login for email: {email}",
                 level="ERROR",
-                source="user_login",
+                message_id="LOGINERR",
                 sd_tags={
                     "endpoint": request.path,
                     "method": request.method,
@@ -711,7 +711,7 @@ class UserLogin(Resource):
             log(
                 message=f"Unexpected error during login for email: {email} with status code: {response.status_code}",
                 level="ERROR",
-                source="user_login",
+                message_id="LOGINERR",
                 sd_tags={
                     "endpoint": request.path,
                     "method": request.method,

@@ -80,7 +80,7 @@ class SQLiteUDPLogger:
                     level TEXT NOT NULL,
                     message TEXT NOT NULL,
                     tags TEXT,
-                    source TEXT,
+                    message_id TEXT,
                     
                     -- Delivery tracking
                     sent INTEGER DEFAULT 0,
@@ -98,7 +98,7 @@ class SQLiteUDPLogger:
             """
             )
 
-            # Create indexes
+            # Create indexes for efficient querying of unsent logs and stats
             conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_sent ON logs(sent)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_logs_priority ON logs(priority, sent)"
@@ -148,7 +148,7 @@ class SQLiteUDPLogger:
         message: str,
         level: str = "INFO",
         sd_tags: Optional[Dict[str, Any]] = None,
-        source: str = None,
+        message_id: Optional[str] = None,
         priority: int = 0,
     ) -> int:
         """
@@ -171,8 +171,8 @@ class SQLiteUDPLogger:
             "service": self.service_name,
             "level": level,
             "message": message,
+            "message_id": message_id,
             "tags": json.dumps(sd_tags) if sd_tags else None,
-            "source": source or "unknown",
             "priority": priority,
         }
 
@@ -189,7 +189,6 @@ class SQLiteUDPLogger:
                     log_entry["level"],
                     log_entry["message"],
                     log_entry["tags"],
-                    log_entry["source"],
                     log_entry["priority"],
                 ),
             )

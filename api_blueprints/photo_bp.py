@@ -146,7 +146,7 @@ class PhotoResource(Resource):
         log(
             message=f"User {identity} fetched photos with hydrant id {hydrant_id}",
             level="INFO",
-            source="photo_fetch",
+            message_id="PHOGET",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -258,7 +258,7 @@ class PhotoResource(Resource):
         log(
             message=f"User {identity} updated photo with id_ {id_}",
             level="INFO",
-            source="photo_update",
+            message_id="PHOPATCH",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -335,7 +335,7 @@ class PhotoResource(Resource):
         log(
             message=f"User {identity} deleted photo with id_ {id_}",
             level="INFO",
-            source="photo_deletion",
+            message_id="PHODEL",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -474,7 +474,7 @@ class PhotoPostResource(Resource):
         log(
             message=f"User {identity} created photo with hydrant id_ {hydrant_id}",
             level="INFO",
-            source="photo_creation",
+            message_id="PHOPOST",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,

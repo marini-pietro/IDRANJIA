@@ -128,7 +128,7 @@ class OperatorResource(Resource):
         log(
             message=f"User {identity} fetched operator with cf {CF}",
             level="INFO",
-            source="operator_fetch",
+            message_id="OPRGET",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -227,7 +227,7 @@ class OperatorResource(Resource):
         log(
             message=f"User {identity} updated operator with cf {CF}",
             level="INFO",
-            source="operator_update",
+            message_id="OPRPATCH",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -313,7 +313,7 @@ class OperatorResource(Resource):
         log(
             message=f"User {identity} deleted operator with cf {CF}",
             level="INFO",
-            source="operator_deletion",
+            message_id="OPRDEL",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
@@ -436,7 +436,7 @@ class OperatorPostResource(Resource):
         log(
             message=f"User {identity} created operator with id {new_operator.id}",
             level="INFO",
-            source="operator_creation",
+            message_id="OPRPOST",
             sd_tags={
                 "endpoint": request.path,
                 "method": request.method,
