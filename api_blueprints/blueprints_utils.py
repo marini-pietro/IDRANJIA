@@ -39,7 +39,7 @@ from api_config import (
     LOG_SERVER_PORT,
     LOG_INTERFACE_DB_FILENAME,
     LOG_INTERFACE_MAX_RETRIES,
-    LOG_INTERFACE_RETRY_DELAY,
+    LOG_INTERFACE_BATCH_DELAY,
     API_SERVER_IDENTIFIER,
 )
 
@@ -51,7 +51,7 @@ log_interface = create_interface(
     db_filename=LOG_INTERFACE_DB_FILENAME,
     service_name=API_SERVER_IDENTIFIER,
     max_retries=LOG_INTERFACE_MAX_RETRIES,
-    retry_delay=LOG_INTERFACE_RETRY_DELAY,
+    retry_delay=LOG_INTERFACE_BATCH_DELAY,
 )
 
 print("Logging interface created successfully. Starting background thread...")

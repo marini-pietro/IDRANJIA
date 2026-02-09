@@ -1,12 +1,4 @@
 """
-This module contains the configuration settings, including:
-- Authentication server settings
-- Log server settings
-- API server settings
-- Database settings
-- HTTP status codes and their explanations
-- Authorization settings
-
 Configuration values are loaded from environment variables if set, otherwise default to hardcoded values (only suitable for development environments).
 Some settings, because of their type complexity or reliance on other settings, cannot be set via environment variables and thus remain hardcoded in this file (none are sensitive).
 Such settings should be modified directly in this file if needed, though in the vast majority of cases, this is unnecessary and not recommended.
@@ -63,10 +55,10 @@ AUTH_SERVER_SSL: bool = not (
     AUTH_SERVER_SSL_CERT == "" and AUTH_SERVER_SSL_KEY == ""
 )  # Whether the authentication server uses SSL/TLS or not
 
-# PBKDF2 HMAC settings for password hashing
+# PBKDF2 HMAC settings for password hashing (have to match those in api_config.py)
 PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "algorithm": hashes.SHA256(),
-    "length": 32,
+    "length": 32,  # length of the derived key in bytes (32 bytes = 256 bits, which is a common choice for secure password hashing)
     "iterations": 310_000,  # Minimum amount recommended by OWASP as of 2025 (should be increased is latency budget allows it)
     "backend": default_backend(),
 }
@@ -88,7 +80,8 @@ JWT_REFRESH_JSON_KEY = os_environ.get(
     "JWT_REFRESH_JSON_KEY", "jwt_refresh_token"
 )  # name of the JSON key for refresh JWTs
 JWT_TOKEN_LOCATION = os_environ.get(
-    "JWT_TOKEN_LOCATION", "headers,query_string,json"
+    "JWT_TOKEN_LOCATION",
+    "headers,query_string,json",  # values must be strictly separated by commas with no spaces
 ).split(
     ","
 )  # locations to look for JWTs
@@ -99,7 +92,7 @@ JWT_ACCESS_TOKEN_EXPIRES = timedelta(
     hours=int(os_environ.get("JWT_ACCESS_TOKEN_EXPIRES_HOURS", 3))
 )  # access token expiration time
 
-# Settings for loggin interface
+# Settings for logging interface
 # N.B: LOG_SERVER_HOST and LOG_SERVER_PORT must be valid and reachable by the auth server for logging to work properly
 # N.B: LOG_DB_PATH must be a valid path where the auth server has write permissions
 LOG_SERVER_HOST: str = os_environ.get(
@@ -110,12 +103,12 @@ LOG_SERVER_PORT: int = int(
 )  # port in which the log server listens for UDP syslog messages
 LOG_INTERFACE_DB_FILENAME: str = os_environ.get(
     "LOG_INTERFACE_DB_FILENAME", ""
-)  # filename for the SQLite database file for logging (no default parameter is given, becuase if it is missing the interface will create a more accurately named DB file based on runtime data such as timestamps)
+)  # filename for the SQLite database file for logging (no default parameter is given, because if it is missing the interface will create a more accurately named DB file based on runtime data such as timestamps)
 LOG_INTERFACE_MAX_RETRIES: int = int(
     os_environ.get("LOG_INTERFACE_MAX_RETRIES", 5)
 )  # maximum number of retries for logging interface
-LOG_INTERFACE_RETRY_DELAY: int = int(
-    os_environ.get("LOG_INTERFACE_RETRY_DELAY", 30)
+LOG_INTERFACE_BATCH_DELAY: int = int(
+    os_environ.get("LOG_INTERFACE_BATCH_DELAY", 30)
 )  # delay (in seconds) between retries for logging interface
 
 # | Database configuration
@@ -128,10 +121,10 @@ DB_PORT = os_environ.get("DB_PORT", "5432")  # database port
 SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"  # database URI for SQLAlchemy
 SQLALCHEMY_TRACK_MODIFICATIONS = (
     os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True"
-)  # disable/enable flask sql alchemy track modifications (will have major performance impact, recommended to keep it disabled)
+)  # disable/enable for flask-sql alchemy to track modifications (will have major performance impact, recommended to keep it disabled)
 
 # Miscellaneous settings
-# | Rate limiting settings TODO actually add rate limiting to auth server
+# | Rate limiting settings
 RATE_LIMIT_MAX_REQUESTS: int = int(
     os_environ.get("RATE_LIMIT_MAX_REQUESTS", 50)
 )  # max requests per time window

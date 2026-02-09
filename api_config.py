@@ -25,11 +25,12 @@ AUTH_API_VERSION: str = os_environ.get("AUTH_API_VERSION", "v1")
 IS_AUTH_SERVER_SSL: bool = os_environ.get("IS_AUTH_SERVER_SSL", "False") == "True"
 JWT_VALIDATION_CACHE_SIZE: int = int(os_environ.get("JWT_VALIDATION_CACHE_SIZE", 1000))
 JWT_VALIDATION_CACHE_TTL: int = int(os_environ.get("JWT_VALIDATION_CACHE_TTL", 3600))
+
 # PBKDF2 HMAC settings for password hashing (have to match those in auth_config.py)
 PBKDF2HMAC_SETTINGS: Dict[str, int] = {
     "algorithm": hashes.SHA256(),
-    "length": 32,  # length of the derived key in bytes
-    "iterations": 100000,
+    "length": 32,  # length of the derived key in bytes (32 bytes = 256 bits, which is a common choice for secure password hashing)
+    "iterations": 310_000,  # Minimum amount recommended by OWASP as of 2025 (should be increased is latency budget allows it)
     "backend": default_backend(),
 }
 
@@ -48,9 +49,9 @@ LOG_INTERFACE_DB_FILENAME: str = os_environ.get(
 LOG_INTERFACE_MAX_RETRIES: int = int(
     os_environ.get("LOG_INTERFACE_MAX_RETRIES", 5)
 )  # maximum number of retries for logging interface
-LOG_INTERFACE_RETRY_DELAY: int = int(
-    os_environ.get("LOG_INTERFACE_RETRY_DELAY", 30)
-)  # delay (in seconds) between retries for logging interface
+LOG_INTERFACE_BATCH_DELAY: int = int(
+    os_environ.get("LOG_INTERFACE_BATCH_DELAY", 15)
+)  # delay (in seconds) between batch of logs sent to the log server by the logging interface
 
 # API server related settings
 # | API server settings
@@ -114,7 +115,8 @@ JWT_REFRESH_JSON_KEY = os_environ.get(
     "JWT_REFRESH_JSON_KEY", "jwt_refresh_token"
 )  # name of the JSON key to look for refresh JWTs (if refresh JWTs are sent via JSON body)
 JWT_TOKEN_LOCATION = os_environ.get(
-    "JWT_TOKEN_LOCATION", "headers,query_string,json"
+    "JWT_TOKEN_LOCATION",
+    "headers,query_string,json",  # values must be strictly separated by commas with no spaces
 ).split(
     ","
 )  # locations to look for JWTs
@@ -130,7 +132,7 @@ DB_HOST = os_environ.get("DB_HOST", "localhost")  # database host
 DB_NAME = os_environ.get("DB_NAME", "idranti-sicuri")  # database name
 DB_USER = os_environ.get("DB_USER", "postgres")  # database user
 DB_PASSWORD = os_environ.get("DB_PASSWORD", "postgres")  # database password
-DB_PORT = os_environ.get("DB_PORT", "5432")
+DB_PORT = os_environ.get("DB_PORT", "5432")  # database port
 SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"  # database URI for SQLAlchemy
 SQLALCHEMY_TRACK_MODIFICATIONS = (
     os_environ.get("SQLALCHEMY_TRACK_MODIFICATIONS", "False") == "True"
