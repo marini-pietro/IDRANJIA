@@ -22,7 +22,6 @@ from configs.api_config import (
     API_SERVER_PORT,
     STATUS_CODES,
     URL_PREFIX,
-
     # Authorization / authentication related
     AUTH_SERVER_HOST,
     AUTH_SERVER_PORT,
@@ -31,19 +30,16 @@ from configs.api_config import (
     IS_API_SERVER_SSL,
     IS_AUTH_SERVER_SSL,
     AUTH_API_VERSION,
-
     # JWT related
     JWT_TOKEN_LOCATIONS,
     JWT_JSON_KEY,
     JWT_QUERY_STRING_NAME,
     JWT_VALIDATION_CACHE_SIZE,
     JWT_VALIDATION_CACHE_TTL,
-
     # Logging interface related
     API_SERVER_IDENTIFIER,
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
-
     # To lessen verbosity, the prefix "API_SERVER_"
     # is not used for the following logging interface settings,
     # but, being taken from the api_config module, they are already properly namespaced.

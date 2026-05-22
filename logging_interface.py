@@ -41,6 +41,7 @@ Design notes
 
 # First party imports
 import gc  # Garbage collection manual control
+
 # (force a collection cycle to unlock database files before deletion)
 import socket
 import threading
@@ -48,6 +49,7 @@ from json import loads as json_loads
 from json import dumps as json_dumps
 from time import sleep as time_sleep
 from contextlib import contextmanager as contextlib_contextmanager
+
 # guarantees closure and resources cleanup even if exceptions occur
 
 from datetime import datetime, timedelta, timezone
@@ -62,10 +64,11 @@ import sqlite3
 # Sensible defaults are still provided in the __init__ method but actual configuration taken from the .env file is expected to be
 # passed in by the service when creating an instance of the logging interface via the `create_interface()` factory function.
 
+
 class SQLiteUDPLogger:
     """
-    Production-ready logger interface for low-volume systems.  
-    An instance of this class is intended to be created once per service, 
+    Production-ready logger interface for low-volume systems.
+    An instance of this class is intended to be created once per service,
     configured with the syslog target and left to handle log persistence and forwarding in the background.
     To easily create an instance use the `create_interface()` factory function.
     Service code can call the `log()` method to store messages, and optionally query recent logs or stats via `query_logs()` and `get_stats()`.
@@ -431,7 +434,7 @@ class SQLiteUDPLogger:
                 )
                 """)
 
-    @contextlib_contextmanager # guarantees closure and resources cleanup even if exceptions occur
+    @contextlib_contextmanager  # guarantees closure and resources cleanup even if exceptions occur
     def _get_connection(self, db_path: Optional[Path] = None):
         """Context manager yielding an sqlite3.Connection for the given DB path."""
 

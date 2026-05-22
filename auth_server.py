@@ -35,11 +35,9 @@ from configs.auth_config import (
     AUTH_SERVER_IDENTIFIER,
     AUTH_SERVER_DEBUG_MODE,
     STATUS_CODES,
-
     # ORM layer related
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
-
     # Security related
     AUTH_SERVER_MAX_JSON_SIZE,
     RATE_LIMIT_TIERS,
@@ -54,19 +52,17 @@ from configs.auth_config import (
     JWT_SECRET_KEY,
     JWT_ALGORITHM,
     JWT_TOKEN_LOCATIONS,
-    JWT_QUERY_STRING_NAME, 
-    # (e.g. ?token=...) not recommended for production, default configuration of JWT_TOKEN_LOCATIONS 
+    JWT_QUERY_STRING_NAME,
+    # (e.g. ?token=...) not recommended for production, default configuration of JWT_TOKEN_LOCATIONS
     # does not include query string, but query string related logic is still inserted for flexibility and development purposes
     JWT_JSON_KEY,
     JWT_REFRESH_JSON_KEY,
-
     # Logging interface related
     LOG_SERVER_HOST,
     LOG_SERVER_PORT,
-
-        # To lessen verbosity, the prefix "AUTH_SERVER_"
-        # is not used for the following logging interface settings,
-        # but, being taken from the auth_config module, they are already properly namespaced.
+    # To lessen verbosity, the prefix "AUTH_SERVER_"
+    # is not used for the following logging interface settings,
+    # but, being taken from the auth_config module, they are already properly namespaced.
     LOG_INTERFACE_DB_FILENAME,
     LOG_INTERFACE_MAX_RETRIES,
     LOG_INTERFACE_BATCH_DELAY,

@@ -3,7 +3,7 @@
 # - API Server: Main API service
 # - Auth Server: Authentication microservice
 # - Log Server: Logging microservice
-#
+
 # Example usage:
 #   docker-compose --env-file .env -f docker/docker-compose.yml up -d # Start all services in detached mode (run from project root)
 #   docker-compose logs -f api     # Follow logs from API service
@@ -12,22 +12,22 @@
 
 # ${VAR_NAME:-default} syntax allows us to set defaults that can be overridden by .env file or environment variables when parsing.
 
-# version attribute is obsolete, so not included
+# docker version attribute is not included since it has become obsolete in recent docker releases
 
 services:
-  # PostgreSQL Database Service:
-  # Provides persistent relational database for the application.
+  # PostgreSQL database service:
+  # Provides a persistent relational database for the application.
   # Uses PostgreSQL built on Alpine Linux image for a smaller footprint.
   # If running on Windows, ensure Docker Desktop is running Linux containers (with the default setup, usually via WSL2).
   db:
-    image: postgres:15-alpine
-    container_name: idranti_db
+    image: postgis/postgis:15-3.4-alpine # PostgreSQL 15 with PostGIS 3.4 on Alpine Linux
+    container_name: idranti_db # Name of the container for easier identification in logs and commands
     
     # Environment variables for PostgreSQL initialization
     environment:
-      POSTGRES_USER: ${DB_USER}           # Database user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}   # Database password
-      POSTGRES_DB: ${DB_NAME}               # Database name
+      POSTGRES_USER: ${DB_USER} # Database user
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # Database password
+      POSTGRES_DB: ${DB_NAME} # Database name
     
     # Port mapping: HOST_PORT:CONTAINER_PORT
     # Exposes PostgreSQL on localhost:5432 for local development/debugging
@@ -48,8 +48,12 @@ services:
     # Health check: Verify database is ready before other services start
     # This prevents race conditions where API tries to connect before DB is ready
     healthcheck:
-      # Check if PostgreSQL is accepting connections
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      # Check if PostgreSQL is accepting connections and if required extensions are installed
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB && psql -U $$POSTGRES_USER -d $$POSTGRES_DB -tAc \"SELECT CASE WHEN COUNT(*) = 2 THEN 'ok' ELSE 'missing' END FROM pg_extension WHERE extname IN ('postgis', 'citext')\" | grep -qx ok"
+        ]
       interval: 10s      # Check every 10 seconds
       timeout: 5s        # Wait max 5 seconds for check to complete
       retries: 5         # Mark unhealthy after 5 failed checks
@@ -65,16 +69,16 @@ services:
     # context: Where to find files needed for build (project root, for requirements/api_requirements.txt)
     # dockerfile: Which Dockerfile to use
     build:
-      context: ..                      # Parent directory (project root)
+      context: .. # Parent directory (project root)
       dockerfile: docker/Dockerfile_api # Path to Dockerfile
     
-    container_name: idranti_api 
+    container_name: idranti_api # Name of the container for easier identification in logs and commands
     
     # This API service depends on database being ready
     # depends_on with condition ensures DB is healthy before API starts
     depends_on:
       db:
-        condition: service_healthy  # Wait for DB healthcheck to pass
+        condition: service_healthy # Wait for DB healthcheck to pass
     
     # Environment variables injected into container
     # These come from .env file and override defaults
@@ -120,7 +124,7 @@ services:
     
     # Network for inter-service communication
     networks:
-      - idranti_network
+      - idranti_network # Services on this network can reach each other by service name (e.g., 'db' for database)
 
   # Auth Server Service (Authentication microservice)
   # Handles user authentication, JWT token generation/validation
@@ -178,7 +182,7 @@ services:
       - auth_logs:/app/logs
     
     networks:
-      - idranti_network
+      - idranti_network # Services on this network can reach each other by service name (e.g., 'db' for database)
 
   # Log Server Service (Logging microservice)
   # Collects and manages application logs
@@ -186,9 +190,9 @@ services:
   log:
     build:
       context: ..
-      dockerfile: docker/Dockerfile_log
+      dockerfile: docker/Dockerfile_log # Path to Dockerfile for log server
     
-    container_name: idranti_log
+    container_name: idranti_log # Name of the container for easier identification in logs and commands
     
     environment:
       # Log server configuration
@@ -207,7 +211,7 @@ services:
       - log_logs:/app/logs
     
     networks:
-      - idranti_network
+      - idranti_network # Services on this network can reach each other by service name (e.g., 'db' for database)
 
 # Volumes
 # Named volumes persist data beyond container lifecycle

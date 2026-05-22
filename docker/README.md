@@ -99,6 +99,11 @@ docker compose ps
 # Expected output: All services should show "Up" status for each container
 ```
 
+Note: Docker only runs the `init.sql` script on a fresh data directory, if any changes have been made to `init.sql` or some images where changed it is best to shutdown the stack with `docker compose down -v` to remove the volumes and start fresh with `docker compose up -d` to ensure the database is initialized correctly (other solutions exists but this is the most straightforward one and less error prone).
+
+Note: The syslog service uses by default port 514 (common port for syslog traffic).  
+On some platforms, binding to low ports (<1024) may require elevated permissions; consider using a higher port if issues arise.
+
 ### 3. Verify services health
 ```bash
 # Check API server is healthy
@@ -111,6 +116,13 @@ curl http://localhost:5001/health
 curl http://localhost:5002/health
 
 # Expected response: {"status": "ok"}
+
+# Check database is healthy
+docker compose exec db pg_isready -U idranti_user -d idranti_db
+
+# Expected response: "accepting connections"
+
+# Database extensions check is already handled during container startup.
 ```
 
 ### 4. View logs (optional)
@@ -203,6 +215,9 @@ docker-compose ps db
 
 # Check database logs
 docker-compose logs db
+
+# Check whether the extensions were created successfully
+docker-compose exec db psql -U idranti_user -d idranti_db -c "SELECT extname FROM pg_extension WHERE extname IN ('postgis', 'citext');"
 
 # Connect directly to test
 docker-compose exec db psql -U idranti_user -d idranti_db

@@ -42,14 +42,11 @@ from configs.api_config import (
     STATUS_CODES,
     API_VERSION,
     URL_PREFIX,
-
     # ORM layer related
     SQLALCHEMY_DATABASE_URI,
     SQLALCHEMY_TRACK_MODIFICATIONS,
-
     # Documentation related
     SWAGGER_CONFIG,
-
     # Security related
     API_SERVER_SSL_CERT,
     API_SERVER_SSL_KEY,
@@ -58,10 +55,8 @@ from configs.api_config import (
     SQL_PATTERN,
     SQL_SCAN_MAX_RECURSION_DEPTH,
     IS_API_SERVER_SSL,
-
     # Authentication service/flow related
     AUTH_API_VERSION,
-
     # JWT related
     JWT_SECRET_KEY,
     JWT_ALGORITHM,
@@ -72,7 +67,6 @@ from configs.api_config import (
     JWT_REFRESH_TOKEN_EXPIRES,
     JWT_ACCESS_TOKEN_EXPIRES,
     INVALID_JWT_MESSAGES,
-
     # Rate limit related
     RATE_LIMIT_TIERS,
     API_SERVER_RATE_LIMIT,

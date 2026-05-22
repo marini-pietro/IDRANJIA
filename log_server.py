@@ -34,7 +34,6 @@ from configs.log_config import (
     LOGGER_NAME,
     LOG_SERVER_IDENTIFIER,
     DELAYED_LOGS_QUEUE_SIZE,
-
     # Security related
     LOG_SERVER_RATE_LIMIT,
     RETAIN_LOGS_RATE_LIMIT_TRIGGER,
@@ -43,6 +42,7 @@ from configs.log_config import (
     LOG_SERVER_RATE_LIMIT_CACHE_SIZE,
     LOG_SERVER_RATE_LIMIT_CACHE_TTL,
 )
+
 
 class ConditionalFormatter(logging.Formatter):
     """
@@ -77,6 +77,7 @@ class ConditionalFormatter(logging.Formatter):
         else:
             s = ct.strftime("%Y-%m-%d %H:%M:%S")
         return f"{s},{int(record.msecs):03d}"
+
 
 # Define the logger class
 class Logger:
