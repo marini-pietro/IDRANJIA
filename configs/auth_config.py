@@ -7,7 +7,7 @@ This module also provides default values and explanations for each configuration
 
 # Library imports
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, TypedDict
 from datetime import timedelta
 from os import environ as os_environ
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
@@ -63,7 +63,13 @@ AUTH_SERVER_MAX_JSON_SIZE = int(
 )  # max size (in bytes) of incoming JSON payloads
 
 # PBKDF2 HMAC settings for password hashing (have to match those in api_config.py)
-PBKDF2HMAC_SETTINGS: Dict[str, int | hashes.HashAlgorithm] = {
+class PBKDF2HMACSettings(TypedDict):
+    algorithm: hashes.HashAlgorithm
+    length: int
+    iterations: int
+    backend: Any
+
+PBKDF2HMAC_SETTINGS: PBKDF2HMACSettings = {
     "algorithm": hashes.SHA256(),
     "length": 32,  # length of the derived key in bytes
     # (32 bytes = 256 bits, which is a common choice for secure password hashing)

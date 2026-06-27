@@ -114,6 +114,13 @@ INFO - [log-server-1] Starting syslog server...
 
 **Message IDs available at the end of the file.**
 
+## Admin interface
+
+Built upon [Flask-Admin](https://github.com/pallets-eco/flask-admin).  
+Since the interface is a browser page with buttons, tables, etc... it uses a regular cookie-based session with authentication and authorization checks with bridge steps to a JWT to allow the admin to perform actions on the JWT-based services.
+
+[Flask admin documentation](https://flask-admin.readthedocs.io/en/stable/).
+
 ## Tests
 
 The `tests/` folder contains pytest test suites for the API server, auth server, and blueprints.  

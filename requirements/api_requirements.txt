@@ -2,6 +2,7 @@ flask
 flask-jwt-extended
 flask-restful
 flask-marshmallow
+flask-admin
 flasgger
 requests
 cachetools

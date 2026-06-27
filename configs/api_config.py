@@ -11,7 +11,7 @@ from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
 from datetime import timedelta
 from os import environ as os_environ
 from os.path import isfile as os_path_isfile
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, Set, Tuple, TypedDict
 from json import loads as json_loads
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -37,7 +37,14 @@ JWT_VALIDATION_CACHE_SIZE: int = int(os_environ.get("JWT_VALIDATION_CACHE_SIZE",
 JWT_VALIDATION_CACHE_TTL: int = int(os_environ.get("JWT_VALIDATION_CACHE_TTL", 3600))
 
 # PBKDF2 HMAC settings for password hashing (have to match those in auth_config.py)
-PBKDF2HMAC_SETTINGS: Dict[str, int | hashes.HashAlgorithm] = {
+class PBKDF2HMACSettings(TypedDict):
+    algorithm: hashes.HashAlgorithm
+    length: int
+    iterations: int
+    backend: Any
+
+
+PBKDF2HMAC_SETTINGS: PBKDF2HMACSettings = {
     "algorithm": hashes.SHA256(),
     "length": 32,  # length of the derived key in bytes (32 bytes = 256 bits,
     # which is a common choice for secure password hashing)
