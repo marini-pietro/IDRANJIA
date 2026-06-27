@@ -6,6 +6,7 @@ This module also provides default values and explanations for each configuration
 """
 
 # Library imports
+from pathlib import Path
 from re import IGNORECASE as RE_IGNORECASE, compile as re_compile
 from datetime import timedelta
 from os import environ as os_environ
@@ -16,11 +17,15 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from dotenv import load_dotenv
 
-if load_dotenv():  # Loads .env file if present
-    print("Loaded environment variables from .env file in api_config.py")
+ENV_FILE = Path(__file__).resolve().with_name(".env")
+
+if load_dotenv(dotenv_path=ENV_FILE):  # Loads .env file if present
+    print(
+        f"API service configuration module: Loaded environment variables from {ENV_FILE}"
+    )
 else:
     print(
-        "No .env file found in api_config.py; using defaults and environment variables."
+        f"API service configuration module: No .env file found at {ENV_FILE}; using defaults and environment variables."
     )
 
 # Authentication server related settings

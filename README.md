@@ -1,15 +1,13 @@
 # IDRANTI SICURI BACKEND
 
 **Notice**: I'm the sole developer of this repository, handling every stage from architecture design to testing and deployment.  
-I started this as a volunteer effort while still in my last year of high school after being asked to partecipate by a professor.  
+I started this as a volunteer effort while still in my last year of high school after being asked to partecipate by a professor and a third party.  
 While I can't guarantee the project will remain permanently open source, I'm committed to keeping it accessible and if circumstances change, I will create an alternative generic version to keep the project available as open-source code.  
-I would also like to disclose that a third party involved into starting this project (by originally contacting my professor) has once briefly suggested potential compensation, but I'm not motivated by it; my priority is maintaining this as an open-source resource. I wanted to be completely transparent about the project's background and my intentions.  
 
 Due to (the usual) slow bureaucracy and the third party rarely contacting us developers, so the project moves toward completion at a very slow pace and requirements tend to arrive in small, uneven updates during development, which is far from ideal.
 The codebase is fairly modular, so future updates should not significantly reshape the core logic or underlying processes, but it is still worth keeping this in mind if you want to fork the repository.
 
-**Regarding donations**: If this project has been useful to you and you would like to donate, please don't donate to me.  
-Instead, support Wikipedia, Internet Archive, or any other charitable cause of your choosing.
+**Regarding donations**: If this project has been useful to you and you would like to donate, please instead support Wikipedia, Internet Archive, or any other charitable cause of your choosing.
 
 ## License
 
@@ -86,16 +84,15 @@ Due to the expected very low throughput of log messages passing through the arch
 Instead the architecture features an ad-hoc solution consisting of a dedicated interface (for each service) to a small database built with SQLite, this way the process of handling unsent logs is greatly simplified and, because of the transactional nature of relational databases, losing data is very unlinkely.  
 To aid in management, each microservice also includes a dedicated endpoint for admin users to clear out sent logs in the sqlite3 database (i.e. delete all rows that have the 'sent' flag set).  
 
-Note: Since each instance of a microservice (except the log service of course) will need its own instance of the interface, the `logging_interface.py` should be placed along with the server source code in each machine that will run the service(s). Instantiating the interface in the services source code is already handled through the provided factory function `create_interface` in `logging_interface.py`.
+Note: Since each instance of a microservice (except the log server of course) will need its own instance of the interface, the `logging_interface.py` should be placed along with the server source code in each machine that will run the service(s). Instantiating the interface in the services source code is already handled through the provided factory function `create_interface` in `logging_interface.py`.
 
-**N.B.:** All log-related operations use UTC time without timezone indicators. 
-Log messages are written in UTC format (without timezone indicators) using this structure:
+**N.B.:** Log messages are written in UTC format (without timezone indicators) using this structure:
 ```
 INFO - [log-server-1] <14>1 2026-04-16T14:05:19 api-host api-server - HYDGET [api-server@32473 endpoint="/hydrants" user_id="42"] Hydrant list retrieved successfully
 ```
 
 The syslog server does not add a second timestamp of its own. The only timestamp shown in forwarded log lines is the one carried in the JSON payload produced by the logging interface.  
-In logs generated directly by the syslog server itself no separate timestamp prefix is added either.  
+In logs generated directly by the syslog server itself a separate timestamp prefix is added.  
 
 Breakdown of the example:
 
@@ -191,26 +188,6 @@ Recommended environment overrides (guidelines, use a proper deployment process):
 - `JWT_SECRET_KEY` — use a securely generated key (e.g., 32+ bytes from `openssl rand -base64 48`).
 - `SQLALCHEMY_DATABASE_URI` — use a production DB URI rather than the local defaults.
 
-## Security hardening checklist (recommended before production)
-
-1. Remove any hard-coded secret or sensitive settings and put them inside of a properly managed and kept `.env` file.
-2. Ensure `JWT_SECRET_KEY` >= 32 bytes, rotate periodically, and keep secrets out of source control.
-3. Use real TLS certificates in `*_SSL_CERT` / `*_SSL_KEY` (`*_SSL` flags will automatically configure wether certificate and key are provided or not).
-4. Use a managed database or secure DB instance with restricted network access and strong credentials.
-5. Disable debug modes and remove overly permissive token locations (prefer headers over query string).
-
-## Rough road map to move into production
-
-Only to be used as a sort of checklist, use a proper deployment process.
-
-- Review test coverage.
-- Remove any sensitive/weak settings that may affect security (check paragraph above).
-- Depending on the number of machines you are deploying to, separate each service with their relevant  `*_config.py` file and a suitable `.env` file. (If a machine runs two or more services all the relevant `*_config.py` file have to present and the `.env` file has to be the sum of all the relevant `.env` files). Here's how to separate each server:
-    - The log server consists of `log_server.py`, `log_config.py` and the relevant `.env` file.
-    - The auth server consists of `auth_server.py`, `auth_config.py`, `models.py` (only needs SQLAlchemy instance and User resource abstraction but, for simplicity, the file can just be copied the same way that it is for the API server) and the relevant `.env` file.
-    - The API server consists of `api_server.py`, `api_config.py`, `api_blueprints` folder, `models.py` and the relevant `.env` file.
-- Use admin utilities (still being worked on) test that all the security measures function properly.
-
 ## Troubleshooting pointers
 
 - **JWT configuration mismatch**: mismatched `JWT_SECRET_KEY` or `JWT_ALGORITHM` between `auth_server.py` and `api_server.py`.  
@@ -218,7 +195,7 @@ Only to be used as a sort of checklist, use a proper deployment process.
 - **Log messages or requests are dropped**: check rate limit values in `*_config.py` files and the log server's delayed queue size if messages are dropped.  
 - **Unable to load configuration (No .env file found)**: The suffix .example has not been removed from the .env file.  
 - **Unable to execute quick start/kill scripts to run the code on Windows based machines**: Execute this command in the powershell terminal `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted`, this will allow script execution only for the current terminal session and not affect any other sessions or system-wide settings.
-- **Unable to execuite quick start/kill scripts to run the code on Linux based machines**: Ensure the scripts have the proper permission (i.e you have properly used the `chmod` command).
+- **Unable to execuite quick start/kill scripts to run the code on Linux based machines**: Ensure the scripts have the proper permission (i.e. you have properly used the `chmod` command).
 - **Cannot connect to database**: Often, especially with deployment and testing configurations, the name (or other configurations) of the database is not fully clear while using only CLI tools. Aiding yourself with a GUI tool like pgAdmin4 check that the target database configurations matches the .env file.  Note: it is not recommend to `postgres` database, instead just create a new one and migrate the data if, by mistake, you inserted the data into `postgres` database.
 - **Cannot launch services with SSL disabled**: Match sure all the configuration values are coherent with each other and that any empty values in the env file use "", because without them the parser will interpret the comment as the value.
 
